@@ -1,3 +1,58 @@
-'use strict';const http=require('node:http'),express=require('express'),cors=require('cors'),auth=require('./auth');const{createLobby}=require('./lobby'),{MemoryGameStore}=require('./store'),{configureSocket}=require('./socket');
-function createApplication(){const app=express(),server=http.createServer(app),lobby=createLobby(),store=new MemoryGameStore();const origins=[process.env.FRONTEND_URL,'http://localhost:3000','http://127.0.0.1:3000','http://localhost:8080','http://127.0.0.1:8080'].filter(Boolean);app.use(cors({origin:(o,cb)=>cb(null,!o||origins.includes(o)),allowedHeaders:['Content-Type','Authorization']}));app.use(express.json({limit:'16kb'}));app.get('/health',(_q,r)=>r.status(200).json({status:'ok'}));app.post('/auth/login',async(q,r)=>{const v=await auth.login(q.body?.username,q.body?.password);return v?r.json(v):r.status(401).json({error:'Неправильне ім’я або пароль'})});app.get('/auth/me',auth.middleware,(q,r)=>r.json({id:q.playerId,name:auth.name(q.playerId)}));app.post('/auth/logout',auth.middleware,(q,r)=>{auth.logout(auth.bearer(q.headers.authorization));r.json({ok:true})});app.get('/lobby',auth.middleware,(_q,r)=>r.json(lobby));app.get('/games/current',auth.middleware,(_q,r)=>r.json(store.current()));app.get('/games/:id',auth.middleware,(q,r)=>{const g=store.get(q.params.id);return g?r.json(g):r.status(404).json({error:'Партію не знайдено'})});app.get('/games/:id/moves',auth.middleware,(q,r)=>{const g=store.get(q.params.id);return g?r.json(g.moves):r.status(404).json({error:'Партію не знайдено'})});configureSocket(server,origins,lobby,store);return{app,server,lobby,store}}
-if(require.main===module){const port=Number(process.env.PORT||4000);createApplication().server.listen(port,'0.0.0.0',()=>console.log(`Pai Sho server listening on 0.0.0.0:${port}`))}module.exports={createApplication};
+'use strict';
+
+const http = require('node:http');
+const express = require('express');
+const cors = require('cors');
+const auth = require('./auth');
+const { corsOptions } = require('./cors');
+const { createLobby } = require('./lobby');
+const { MemoryGameStore } = require('./store');
+const { configureSocket } = require('./socket');
+
+function createApplication() {
+  const app = express();
+  const server = http.createServer(app);
+  const lobby = createLobby();
+  const store = new MemoryGameStore();
+
+  app.use(cors(corsOptions));
+  app.use(express.json({ limit: '16kb' }));
+  app.get('/health', (_req, res) => res.status(200).json({ status: 'ok' }));
+  app.post('/auth/login', (req, res) => {
+    const session = auth.login(req.body?.username, req.body?.password);
+    return session
+      ? res.json(session)
+      : res.status(401).json({ error: 'Неправильне ім’я або пароль' });
+  });
+  app.get('/auth/me', auth.middleware, (req, res) => (
+    res.json({ id: req.playerId, name: auth.name(req.playerId) })
+  ));
+  app.post('/auth/logout', auth.middleware, (req, res) => {
+    auth.logout(auth.bearer(req.headers.authorization));
+    res.json({ ok: true });
+  });
+  app.get('/lobby', auth.middleware, (_req, res) => res.json(lobby));
+  app.get('/games/current', auth.middleware, (_req, res) => res.json(store.current()));
+  app.get('/games/:id', auth.middleware, (req, res) => {
+    const game = store.get(req.params.id);
+    return game ? res.json(game) : res.status(404).json({ error: 'Партію не знайдено' });
+  });
+  app.get('/games/:id/moves', auth.middleware, (req, res) => {
+    const game = store.get(req.params.id);
+    return game
+      ? res.json(game.moves)
+      : res.status(404).json({ error: 'Партію не знайдено' });
+  });
+
+  configureSocket(server, corsOptions, lobby, store);
+  return { app, server, lobby, store };
+}
+
+if (require.main === module) {
+  const port = Number(process.env.PORT || 3000);
+  createApplication().server.listen(port, '0.0.0.0', () => {
+    console.log(`Pai Sho server listening on 0.0.0.0:${port}`);
+  });
+}
+
+module.exports = { createApplication };

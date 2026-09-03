@@ -1,23 +1,8 @@
 services:
   - type: web
-    name: skud-pai-sho-server
+    name: pai-sho-server-altseting
     runtime: node
     rootDir: server
     buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /health
-    envVars:
-      - key: NODE_VERSION
-        value: 20
-      - key: FRONTEND_URL
-        sync: false
-      - key: PLAYER_ONE_USERNAME
-        sync: false
-      - key: PLAYER_ONE_PASSWORD_HASH
-        sync: false
-      - key: PLAYER_TWO_USERNAME
-        sync: false
-      - key: PLAYER_TWO_PASSWORD_HASH
-        sync: false
-      - key: JWT_SECRET
-        generateValue: true

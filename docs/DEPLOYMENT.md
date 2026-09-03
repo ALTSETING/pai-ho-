@@ -1,23 +1,48 @@
 # Deployment
 
-## Vercel (тільки статичний frontend)
+Проєкт розгортається як два незалежні сервіси. Жодні Environment Variables не потрібні.
 
-* **Root Directory:** `frontend`
-* **Framework Preset:** `Other`
-* **Build Command:** порожньо
-* **Install Command:** порожньо
-* **Output Directory:** `.`
+## Render — backend
 
-Перед deploy замініть обидва placeholder URL у `frontend/config.js` на HTTPS URL Render service. `frontend/vercel.json` не містить rewrite, що міг би перехопити статичні JS/CSS/SVG.
+Створіть Blueprint із кореневого `render.yaml` або Node Web Service з такими параметрами:
 
-## Render (тільки backend)
-
+* **Name:** `pai-sho-server-altseting`
 * **Root Directory:** `server`
 * **Runtime:** `Node`
 * **Build Command:** `npm ci`
 * **Start Command:** `npm start`
 * **Health Check Path:** `/health`
 
-Environment variables: `PLAYER_ONE_USERNAME`, `PLAYER_ONE_PASSWORD_HASH`, `PLAYER_TWO_USERNAME`, `PLAYER_TWO_PASSWORD_HASH`, `JWT_SECRET` (довгий випадковий секрет), `FRONTEND_URL` (точний production origin Vercel без кінцевого `/`) та `PORT` (Render зазвичай задає автоматично). Хеші створіть локально командою `cd server && npm run hash-password -- 'секретний пароль'`.
+Після deployment backend має бути доступний за адресою
+`https://pai-sho-server-altseting.onrender.com`. Якщо Render повідомить, що ім’я вже зайняте,
+одночасно змініть `name` у `render.yaml` та обидві адреси у `frontend/config.js`.
 
-Health URL: `https://<render-service>.onrender.com/health`; відповідь — HTTP 200 `{"status":"ok"}`.
+Сервер використовує наданий Render порт або `3000` локально та слухає `0.0.0.0`.
+Перевірка `https://pai-sho-server-altseting.onrender.com/health` повинна повертати HTTP 200
+і `{"status":"ok"}`.
+
+## Vercel — статичний frontend
+
+Створіть окремий Vercel Project з такими параметрами:
+
+* **Root Directory:** `frontend`
+* **Framework Preset:** `Other`
+* **Install Command:** порожньо
+* **Build Command:** порожньо
+* **Output Directory:** `.`
+
+У frontend немає `package.json`, npm/pnpm або build step. Production URL backend уже записаний
+у `frontend/config.js`; змінні середовища у Vercel також не потрібні.
+
+## Вхід
+
+Сторінка входу приймає один із двох приватних акаунтів, визначених лише в
+`server/src/config.js`. Після успішного входу backend повертає випадковий bearer token,
+який живе в пам’яті до logout або перезапуску сервера. Паролі не потрапляють у відповіді API,
+стан lobby, WebSocket-повідомлення чи frontend-код.
+
+## CORS
+
+REST і Socket.IO приймають запити без Origin (health checks і серверні клієнти), з localhost
+та з HTTPS-доменів `*.vercel.app`. Cookies і cross-origin credentials вимкнені; авторизація
+працює через bearer token.
