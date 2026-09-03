@@ -1,1 +1,0 @@
-import './style.css';export const metadata={title:'Skud Pai Sho',description:'Приватна онлайн-гра для двох'};export default function Layout({children}:{children:React.ReactNode}){return <html lang="uk"><body>{children}</body></html>}
