@@ -1,0 +1,216 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.2
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4
+
+  apps/server:
+    dependencies:
+      '@fastify/cookie':
+        specifier: ^11.0.2
+        version: 11.0.2
+      '@fastify/cors':
+        specifier: ^11.1.0
+        version: 11.1.0
+      '@fastify/rate-limit':
+        specifier: ^10.3.0
+        version: 10.3.0
+      '@pai-sho/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      bcryptjs:
+        specifier: ^3.0.2
+        version: 3.0.2
+      fastify:
+        specifier: ^5.6.0
+        version: 5.6.0
+      jose:
+        specifier: ^6.1.0
+        version: 6.1.0
+      pg:
+        specifier: ^8.16.3
+        version: 8.16.3
+      socket.io:
+        specifier: ^4.8.1
+        version: 4.8.1
+      zod:
+        specifier: ^4.1.5
+        version: 4.1.5
+    devDependencies:
+      '@types/node':
+        specifier: ^24.3.0
+        version: 24.3.0
+      '@types/pg':
+        specifier: ^8.15.5
+        version: 8.15.5
+      tsx:
+        specifier: ^4.20.5
+        version: 4.20.5
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.2
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4
+
+  apps/web:
+    dependencies:
+      '@pai-sho/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      next:
+        specifier: ^15.5.2
+        version: 15.5.2
+      react:
+        specifier: ^19.1.1
+        version: 19.1.1
+      react-dom:
+        specifier: ^19.1.1
+        version: 19.1.1
+      socket.io-client:
+        specifier: ^4.8.1
+        version: 4.8.1
+    devDependencies:
+      '@types/node':
+        specifier: ^24.3.0
+        version: 24.3.0
+      '@types/react':
+        specifier: ^19.1.12
+        version: 19.1.12
+      '@types/react-dom':
+        specifier: ^19.1.9
+        version: 19.1.9
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.2
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4
+
+  packages/shared:
+    dependencies:
+      zod:
+        specifier: ^4.1.5
+        version: 4.1.5
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.2
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4
+
+packages:
+
+  '@fastify/cookie@11.0.2':
+    resolution: {}
+
+  '@fastify/cors@11.1.0':
+    resolution: {}
+
+  '@fastify/rate-limit@10.3.0':
+    resolution: {}
+
+  'bcryptjs@3.0.2':
+    resolution: {}
+
+  'fastify@5.6.0':
+    resolution: {}
+
+  'jose@6.1.0':
+    resolution: {}
+
+  'pg@8.16.3':
+    resolution: {}
+
+  'socket.io@4.8.1':
+    resolution: {}
+
+  'zod@4.1.5':
+    resolution: {}
+
+  '@types/node@24.3.0':
+    resolution: {}
+
+  '@types/pg@8.15.5':
+    resolution: {}
+
+  'tsx@4.20.5':
+    resolution: {}
+
+  'typescript@5.9.2':
+    resolution: {}
+
+  'vitest@3.2.4':
+    resolution: {}
+
+  'next@15.5.2':
+    resolution: {}
+
+  'react@19.1.1':
+    resolution: {}
+
+  'react-dom@19.1.1':
+    resolution: {}
+
+  'socket.io-client@4.8.1':
+    resolution: {}
+
+  '@types/react@19.1.12':
+    resolution: {}
+
+  '@types/react-dom@19.1.9':
+    resolution: {}
+
+snapshots:
+
+  '@fastify/cookie@11.0.2': {}
+
+  '@fastify/cors@11.1.0': {}
+
+  '@fastify/rate-limit@10.3.0': {}
+
+  'bcryptjs@3.0.2': {}
+
+  'fastify@5.6.0': {}
+
+  'jose@6.1.0': {}
+
+  'pg@8.16.3': {}
+
+  'socket.io@4.8.1': {}
+
+  'zod@4.1.5': {}
+
+  '@types/node@24.3.0': {}
+
+  '@types/pg@8.15.5': {}
+
+  'tsx@4.20.5': {}
+
+  'typescript@5.9.2': {}
+
+  'vitest@3.2.4': {}
+
+  'next@15.5.2': {}
+
+  'react@19.1.1': {}
+
+  'react-dom@19.1.1': {}
+
+  'socket.io-client@4.8.1': {}
+
+  '@types/react@19.1.12': {}
+
+  '@types/react-dom@19.1.9': {}
