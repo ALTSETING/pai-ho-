@@ -2,17 +2,13 @@ services:
   - type: web
     name: skud-pai-sho-server
     runtime: node
-    plan: starter
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @pai-sho/shared build && pnpm --filter @pai-sho/server build
-    startCommand: pnpm --filter @pai-sho/server start
+    rootDir: server
+    buildCommand: npm ci
+    startCommand: npm start
     healthCheckPath: /health
     envVars:
-      - key: DATABASE_URL
-        fromDatabase: { name: skud-pai-sho-db, property: connectionString }
-      - key: NODE_ENV
-        value: production
-      - key: JWT_SECRET
-        generateValue: true
+      - key: NODE_VERSION
+        value: 20
       - key: FRONTEND_URL
         sync: false
       - key: PLAYER_ONE_USERNAME
@@ -23,6 +19,5 @@ services:
         sync: false
       - key: PLAYER_TWO_PASSWORD_HASH
         sync: false
-databases:
-  - name: skud-pai-sho-db
-    plan: starter
+      - key: JWT_SECRET
+        generateValue: true

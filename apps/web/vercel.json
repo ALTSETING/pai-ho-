@@ -1,1 +1,0 @@
-{"framework":"nextjs","buildCommand":"cd ../.. && pnpm --filter @pai-sho/web build","installCommand":"cd ../.. && pnpm install --filter @pai-sho/web... --no-frozen-lockfile"}

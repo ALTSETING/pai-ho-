@@ -1,16 +1,23 @@
 # Deployment
 
-## Render (server + PostgreSQL)
+## Vercel (тільки статичний frontend)
 
-1. Створіть PostgreSQL та Web Service з кореня репозиторію або через `render.yaml`.
-2. Задайте `DATABASE_URL`, два username/hash, `JWT_SECRET` (мінімум 32 символи) та точний HTTPS `FRONTEND_URL` без `/` у кінці.
-3. Build: `corepack enable && pnpm install --frozen-lockfile && pnpm --filter @pai-sho/shared build && pnpm --filter @pai-sho/server build`.
-4. Start: `pnpm --filter @pai-sho/server start`. Health check: `/health`.
+* **Root Directory:** `frontend`
+* **Framework Preset:** `Other`
+* **Build Command:** порожньо
+* **Install Command:** порожньо
+* **Output Directory:** `.`
 
-## Vercel
+Перед deploy замініть обидва placeholder URL у `frontend/config.js` на HTTPS URL Render service. `frontend/vercel.json` не містить rewrite, що міг би перехопити статичні JS/CSS/SVG.
 
-Імпортуйте той самий репозиторій, Root Directory — `apps/web`. Додайте `NEXT_PUBLIC_API_URL` та `NEXT_PUBLIC_SOCKET_URL` з HTTPS URL Render. Після першого deploy скопіюйте точний Vercel/custom-domain URL у Render `FRONTEND_URL` і redeploy server.
+## Render (тільки backend)
 
-Для власного домену: Vercel Project → Settings → Domains → Add; створіть запропонований A/CNAME у DNS. Після випуску TLS оновіть `FRONTEND_URL`.
+* **Root Directory:** `server`
+* **Runtime:** `Node`
+* **Build Command:** `npm ci`
+* **Start Command:** `npm start`
+* **Health Check Path:** `/health`
 
-Cookies у production мають `HttpOnly; Secure; SameSite=None`, CORS приймає лише `FRONTEND_URL`. Render має підтримувати WebSocket (увімкнено за замовчуванням).
+Environment variables: `PLAYER_ONE_USERNAME`, `PLAYER_ONE_PASSWORD_HASH`, `PLAYER_TWO_USERNAME`, `PLAYER_TWO_PASSWORD_HASH`, `JWT_SECRET` (довгий випадковий секрет), `FRONTEND_URL` (точний production origin Vercel без кінцевого `/`) та `PORT` (Render зазвичай задає автоматично). Хеші створіть локально командою `cd server && npm run hash-password -- 'секретний пароль'`.
+
+Health URL: `https://<render-service>.onrender.com/health`; відповідь — HTTP 200 `{"status":"ok"}`.
