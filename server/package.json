@@ -1,0 +1,23 @@
+{
+  "name": "pai-sho-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Authoritative two-player Skud Pai Sho server",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test",
+    "hash-password": "node scripts/hash-password.js"
+  },
+  "engines": {
+    "node": "20.x"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "socket.io": "^4.8.1",
+    "zod": "^4.1.5"
+  }
+}
