@@ -3,14 +3,14 @@
 const PLAYERS = [
   {
     id: 'player-one',
-    username: 'denis',
-    password: '1111',
-    displayName: 'Denis',
+    username: 'Vlad',
+    password: '1234',
+    displayName: 'Друг друга',
   },
   {
     id: 'player-two',
-    username: 'friend',
-    password: '2222',
+    username: 'Denis',
+    password: '4321',
     displayName: 'Друг',
   },
 ];
