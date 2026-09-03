@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: skud-pai-sho-server
+    name: pai-sho-server-altseting
     runtime: node
     rootDir: server
     # The lockfile is intentionally minimal, so npm ci rejects it as out of sync.
@@ -8,18 +8,3 @@ services:
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /health
-    envVars:
-      - key: NODE_VERSION
-        value: 20
-      - key: FRONTEND_URL
-        sync: false
-      - key: PLAYER_ONE_USERNAME
-        sync: false
-      - key: PLAYER_ONE_PASSWORD_HASH
-        sync: false
-      - key: PLAYER_TWO_USERNAME
-        sync: false
-      - key: PLAYER_TWO_PASSWORD_HASH
-        sync: false
-      - key: JWT_SECRET
-        generateValue: true

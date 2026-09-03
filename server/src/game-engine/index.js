@@ -3,7 +3,8 @@ const crypto = require('node:crypto');
 const { points, pointMap, pathBetween } = require('./board');
 const { BASIC, ACCENTS, RED, WHITE, RANGE, HARMONY, CLASH, createReserve } = require('./tiles');
 class RuleError extends Error {}
-const other = (player) => (player === 'one' ? 'two' : 'one');
+const playerIds = (state) => Object.keys(state.players);
+const other = (state, player) => playerIds(state).find((id) => id !== player);
 const tileAt = (state, point) => state.board.find((tile) => tile.position === point);
 const location = (tile) => tile.position && pointMap.get(tile.position);
 function canOccupy(tile, point) {
@@ -17,7 +18,10 @@ function suppressed(tile, board) {
   return Boolean(at && board.some((candidate) => candidate.type === 'knotweed' && location(candidate) && Math.max(Math.abs(location(candidate).x - at.x), Math.abs(location(candidate).y - at.y)) <= 1));
 }
 function legalTargets(state, tileId) {
-  const tile = [...state.board, ...state.reserves.one, ...state.reserves.two].find((item) => item.id === tileId);
+  const tile = [
+    ...state.board,
+    ...Object.values(state.reserves).flat(),
+  ].find((item) => item.id === tileId);
   if (!tile) return [];
   if (!tile.position) return points.filter((point) => point.gate && !tileAt(state, point.id) && canOccupy(tile, point)).map((point) => point.id);
   const from = location(tile);
@@ -65,15 +69,19 @@ function formsHarmonyRing(harmonies) {
 }
 function createGame(players, id = crypto.randomUUID()) {
   const now = new Date().toISOString();
-  return { id, rulesVersion: 'Skud Pai Sho (no expansions)', players: structuredClone(players), board: [], reserves: { one: [], two: [] }, selectedAccents: { one: [], two: [] }, activePlayer: players.one.side === 'host' ? 'one' : 'two', turn: 1, phase: 'setup', harmonies: [], moves: [], result: null, createdAt: now, updatedAt: now, version: 0, rematch: { one: false, two: false }, lastMove: null };
+  const ids = Object.keys(players);
+  if (ids.length !== 2) throw new RuleError('Для партії потрібні рівно два гравці');
+  const emptyPlayerLists = () => Object.fromEntries(ids.map((playerId) => [playerId, []]));
+  return { id, rulesVersion: 'Skud Pai Sho (no expansions)', players: structuredClone(players), board: [], reserves: emptyPlayerLists(), selectedAccents: emptyPlayerLists(), activePlayer: ids.find((playerId) => players[playerId].side === 'host') || ids[0], turn: 1, phase: 'setup', harmonies: [], moves: [], result: null, createdAt: now, updatedAt: now, version: 0, rematch: Object.fromEntries(ids.map((playerId) => [playerId, false])), lastMove: null };
 }
 function selectAccents(state, player, accents) {
   if (state.phase !== 'setup') throw new RuleError('Вибір акцентів уже завершено');
   if (!Array.isArray(accents) || accents.length !== 2 || new Set(accents).size !== 2 || accents.some((type) => !ACCENTS.includes(type))) throw new RuleError('Оберіть рівно дві різні акцентні плитки');
   const next = structuredClone(state); next.selectedAccents[player] = accents;
-  if (next.selectedAccents.one.length && next.selectedAccents.two.length) {
-    next.reserves.one = createReserve('one', next.selectedAccents.one);
-    next.reserves.two = createReserve('two', next.selectedAccents.two);
+  if (Object.values(next.selectedAccents).every((selection) => selection.length)) {
+    playerIds(next).forEach((playerId) => {
+      next.reserves[playerId] = createReserve(playerId, next.selectedAccents[playerId]);
+    });
     next.phase = 'playing';
   }
   next.version += 1; next.updatedAt = new Date().toISOString(); return next;
@@ -88,7 +96,7 @@ function applyMove(state, player, move) {
   if (state.moves.some((record) => record.move.commandId === move.commandId)) return state;
   if (state.phase !== 'playing') throw new RuleError('Партія не активна');
   if (player !== state.activePlayer) throw new RuleError('Зараз хід суперника');
-  if (move.kind === 'resign') return finish(state, { winner: other(player), reason: 'resignation' }, player, move);
+  if (move.kind === 'resign') return finish(state, { winner: other(state, player), reason: 'resignation' }, player, move);
   if (!move.tileId || !move.to) throw new RuleError('Оберіть плитку та ціль');
   const owned = [...state.board, ...state.reserves[player]].find((tile) => tile.id === move.tileId && tile.owner === player);
   if (!owned) throw new RuleError('Ця плитка вам не належить');
@@ -107,13 +115,13 @@ function applyMove(state, player, move) {
     const rotations = adjacent.map((item) => ({ item, to: pointMap.get(`${center.x + (location(item).y - center.y)},${center.y - (location(item).x - center.x)}`) }));
     if (rotations.every((entry) => entry.to && !next.board.some((item) => !adjacent.includes(item) && item.position === entry.to.id))) rotations.forEach((entry) => { entry.item.position = entry.to.id; });
   }
-  next.lastMove = move; next.turn += 1; next.activePlayer = other(player); next.harmonies = calculateHarmonies(next.board); next.version += 1; next.updatedAt = new Date().toISOString();
+  next.lastMove = move; next.turn += 1; next.activePlayer = other(next, player); next.harmonies = calculateHarmonies(next.board); next.version += 1; next.updatedAt = new Date().toISOString();
   next.moves.push({ turn: next.turn - 1, player, move, at: next.updatedAt, notation: `${move.kind === 'plant' ? 'Plant' : 'Arrange'} ${tile.type} → ${move.to}` });
   const playerHarmonies = next.harmonies.filter((harmony) => next.board.find((item) => item.id === harmony.a)?.owner === player);
   if (formsHarmonyRing(playerHarmonies)) return finish(next, { winner: player, reason: 'harmony-ring' }, player, move);
-  if (!next.reserves.one.some((item) => item.kind === 'basic') && !next.reserves.two.some((item) => item.kind === 'basic')) {
+  if (Object.values(next.reserves).every((reserve) => !reserve.some((item) => item.kind === 'basic'))) {
     const score = (owner) => next.harmonies.filter((harmony) => harmony.midline && next.board.find((item) => item.id === harmony.a)?.owner === owner).length;
-    const one = score('one'); const two = score('two'); return finish(next, { winner: one === two ? null : one > two ? 'one' : 'two', reason: one === two ? 'draw' : 'last-basic' }, player, move);
+    const [first, second] = playerIds(next); const firstScore = score(first); const secondScore = score(second); return finish(next, { winner: firstScore === secondScore ? null : firstScore > secondScore ? first : second, reason: firstScore === secondScore ? 'draw' : 'last-basic' }, player, move);
   }
   if (!hasAnyMove(next, next.activePlayer)) throw new RuleError('Хід заборонено: суперник не матиме можливих дій');
   return next;
