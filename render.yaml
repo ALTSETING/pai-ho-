@@ -3,7 +3,9 @@ services:
     name: skud-pai-sho-server
     runtime: node
     rootDir: server
-    buildCommand: npm ci
+    # The lockfile is intentionally minimal, so npm ci rejects it as out of sync.
+    # npm install resolves the declared server dependencies during deployment.
+    buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /health
     envVars:
