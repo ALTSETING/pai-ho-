@@ -1,7 +1,7 @@
 'use strict';
 
 window.Board = {
-  cells: [], scale: 39,
+  cells: [], scale: 39, DEBUG_BOARD_CELLS: false,
   init() {
     for (let row = -7; row <= 7; row += 1) for (let column = -7; column <= 7; column += 1) {
       if (column * column + row * row > 50) continue;
@@ -25,7 +25,7 @@ window.Board = {
   },
   tile(tile, selected = false) {
     const side = Game.state?.players[tile.owner]?.side === 'host' ? 'one' : 'two';
-    return `<g class="svg-tile type-${tile.type} side-${side} ${selected ? 'selected' : ''} ${tile.lotusState === 'marked' ? 'marked' : ''}" data-piece="${tile.id}" tabindex="0" role="button" aria-label="${Game.label(tile.type)}"><title>${Game.label(tile.type)}</title><circle class="piece-shadow" cy="5" r="31"/><circle class="player-frame" r="32"/><circle class="piece-rim" r="29"/><circle class="piece-ceramic" r="24"/><circle class="decorative-ring" r="21"/><circle class="piece-inlay" r="18"/><circle class="inner-shade" r="17"/><g class="glyph">${this.symbol(tile.type)}</g><ellipse class="shine" cx="-7" cy="-10" rx="11" ry="5"/></g>`;
+    return `<g class="svg-tile type-${tile.type} side-${side} ${selected ? 'selected' : ''} ${tile.lotusState === 'marked' ? 'marked' : ''}" data-piece="${tile.id}" tabindex="0" role="button" aria-label="${Game.label(tile.type)}"><title>${Game.label(tile.type)}</title><circle class="piece-shadow" cy="5" r="31"/><circle class="player-frame" r="32"/><circle class="piece-rim" r="29"/><circle class="piece-ceramic" r="24"/><circle class="decorative-ring" r="21"/><circle class="piece-inlay" r="18"/><g class="glyph">${this.symbol(tile.type)}</g><ellipse class="shine" cx="-7" cy="-10" rx="11" ry="5"/></g>`;
   },
   targetKind(game, selected, position) {
     if (!selected) return 'move';
@@ -39,24 +39,36 @@ window.Board = {
     <linearGradient id="obsidian" x2=".8" y2="1"><stop stop-color="#718083"/><stop offset=".4" stop-color="#273033"/><stop offset="1" stop-color="#090c0e"/></linearGradient>
     <radialGradient id="ceramic" cx="35%" cy="25%"><stop stop-color="#fffdf0"/><stop offset=".6" stop-color="#d8cdb5"/><stop offset="1" stop-color="#877c69"/></radialGradient>
     <radialGradient id="enamel" cx="38%" cy="28%"><stop stop-color="#526157"/><stop offset=".65" stop-color="#26352d"/><stop offset="1" stop-color="#101a16"/></radialGradient>
-    <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency=".018 .18" numOctaves="3" seed="8" result="n"/><feBlend in="SourceGraphic" in2="n" mode="soft-light"/></filter>
-    <filter id="pieceDepth" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="5" stdDeviation="4" flood-opacity=".62"/><feTurbulence type="fractalNoise" baseFrequency=".12" numOctaves="2" seed="12" result="noise"/><feBlend in="SourceGraphic" in2="noise" mode="soft-light"/></filter>
-    <filter id="innerShadow"><feOffset dx="0" dy="2"/><feGaussianBlur stdDeviation="2" result="blur"/><feComposite operator="out" in="SourceGraphic" in2="blur" result="inverse"/><feFlood flood-color="#000" flood-opacity=".65"/><feComposite operator="in" in2="inverse"/><feComposite operator="over" in2="SourceGraphic"/></filter>
-    <filter id="glow"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-    <clipPath id="boardClip"><circle cx="500" cy="500" r="435"/></clipPath>
+    <filter id="pieceShadow" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="5" stdDeviation="4" flood-opacity=".5"/></filter>
+    <clipPath id="boardClip"><circle cx="500" cy="500" r="455"/></clipPath>
   </defs>`; },
-  draw(game, targets = [], selected = null, animate = true) {
-    const board = document.querySelector('#board');
-    const previous = new Map([...board.querySelectorAll('.piece-position')].map((node) => [node.dataset.id, node.getBoundingClientRect()]));
-    const pieces = new Map(game.board.filter((tile) => tile.position).map((tile) => [tile.position, tile]));
+  createStructure() {
+    const board = document.querySelector('#pai-sho-board');
+    if (board.querySelector('#board-background')) return board;
     const grid = this.cells.map((cell) => `<polygon points="${this.polygon(cell)}"/>`).join('');
+    const debug = this.DEBUG_BOARD_CELLS ? this.cells.map((cell) => `<g class="cell-debug"><circle cx="${cell.centerX}" cy="${cell.centerY}" r="4"/><text x="${cell.centerX}" y="${cell.centerY - 8}">${cell.row}/${cell.column}\n${cell.id}</text></g>`).join('') : '';
+    const hitAreas = this.cells.map((cell) => `<polygon class="cell-hit" data-point="${cell.id}" points="${this.polygon(cell)}"/>`).join('');
+    board.innerHTML = `${this.defs()}<g id="board-background"><circle class="outer-shadow" cx="500" cy="500" r="480"/><circle class="outer-rim" cx="500" cy="500" r="468"/><circle class="inner-rim" cx="500" cy="500" r="458"/><circle class="wood" cx="500" cy="500" r="455"/></g><g id="board-zones" clip-path="url(#boardClip)"><rect class="light-zone" x="45" y="45" width="910" height="910"/><path class="red-zone" d="M45 45H955L500 500ZM45 955H955L500 500Z"/><circle class="portal" cx="500" cy="500" r="75"/><circle class="portal-core" cx="500" cy="500" r="23"/></g><g id="board-grid" class="cell-grid" clip-path="url(#boardClip)">${grid}${debug}</g><g id="move-highlights" clip-path="url(#boardClip)"></g><g id="pieces"></g><g id="effects"></g><g id="cell-hit-areas" clip-path="url(#boardClip)">${hitAreas}</g>`;
+    board.querySelectorAll('.cell-hit').forEach((node) => { node.onclick = (event) => { event.stopPropagation(); const targets = Board.currentTargets || []; if (targets.includes(node.dataset.point)) Game.send(node.dataset.point); else Game.boardCell(node.dataset.point); }; });
+    return board;
+  },
+  draw(game, targets = [], selected = null, animate = true) {
+    const board = this.createStructure(); this.currentTargets = targets;
     const highlights = targets.map((id) => { const cell = this.cell(id); return `<polygon class="move-target ${this.targetKind(game, selected, id)}" data-point="${id}" points="${this.polygon(cell)}"/>`; }).join('');
-    const hitAreas = this.cells.map((cell) => `<polygon class="cell-hit ${targets.includes(cell.id) ? 'target' : ''}" data-point="${cell.id}" points="${this.polygon(cell)}"/>`).join('');
-    const tiles = game.board.filter((tile) => tile.position).map((tile) => { const p = this.point(this.cell(tile.position)); return `<g class="piece-position" data-id="${tile.id}" style="transform:translate(${p.x}px,${p.y}px)">${this.tile(tile, selected?.id === tile.id)}</g>`; }).join('');
-    board.innerHTML = `${this.defs()}<g id="board-background" class="board-background"><circle class="outer-shadow" cx="500" cy="500" r="474"/><circle class="outer-rim" cx="500" cy="500" r="464"/><circle class="inner-rim" cx="500" cy="500" r="442"/><circle class="wood" cx="500" cy="500" r="435"/></g><g id="board-zones" class="board-zones" clip-path="url(#boardClip)"><path class="light-zone" d="M190 190H810V810H190Z"/><path class="red-zone" d="M190 190H810L500 500ZM190 810H810L500 500Z"/><circle class="portal" cx="500" cy="500" r="75"/><circle class="portal-core" cx="500" cy="500" r="23"/></g><g id="cell-grid" class="cell-grid" clip-path="url(#boardClip)">${grid}</g><g id="move-highlights" class="move-highlights">${highlights}</g><g id="pieces" class="pieces">${tiles}</g><g id="effects" class="effects"></g><g id="cell-hit-areas" class="cell-hit-areas">${hitAreas}</g>`;
-    if (animate && previous.size) requestAnimationFrame(() => board.querySelectorAll('.piece-position').forEach((node) => { const old = previous.get(node.dataset.id); if (!old) return; const now = node.getBoundingClientRect(); const dx = old.left - now.left; const dy = old.top - now.top; if (Math.abs(dx) + Math.abs(dy) < 1) return; node.animate([{ transform: `translate(${dx}px,${dy}px)` }, { transform: 'translate(0,0)' }], { duration: 420, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', composite: 'add' }); node.classList.add('moving'); setTimeout(() => node.classList.remove('moving'), 420); }));
+    board.querySelector('#move-highlights').innerHTML = highlights;
+    board.querySelectorAll('.cell-hit').forEach((node) => node.classList.toggle('target', targets.includes(node.dataset.point)));
+    const layer = board.querySelector('#pieces'); const visible = game.board.filter((tile) => tile.position); const authoritativeIds = new Set(visible.map((tile) => tile.id));
+    layer.querySelectorAll('.piece').forEach((node) => { if (!authoritativeIds.has(node.dataset.pieceId)) node.remove(); });
+    visible.forEach((tile) => {
+      const cell = this.cell(tile.position); if (!cell) return;
+      let node = [...layer.children].find((candidate) => candidate.dataset.pieceId === tile.id); const isNew = !node;
+      if (isNew) { node = document.createElementNS('http://www.w3.org/2000/svg', 'g'); node.classList.add('piece'); node.dataset.pieceId = tile.id; node.innerHTML = this.tile(tile, selected?.id === tile.id); layer.append(node); }
+      const inner = node.querySelector('.svg-tile'); inner.classList.toggle('selected', selected?.id === tile.id); inner.classList.toggle('marked', tile.lotusState === 'marked');
+      node.style.transitionDuration = animate && !isNew ? '420ms' : '0ms'; node.setAttribute('transform', `translate(${cell.centerX} ${cell.centerY})`); node.style.transform = `translate(${cell.centerX}px, ${cell.centerY}px)`;
+    });
+    const renderedPieceIds = [...layer.querySelectorAll('.piece')].map((node) => node.dataset.pieceId);
+    console.assert(renderedPieceIds.length === new Set(renderedPieceIds).size, 'Duplicate pieceId in board DOM', renderedPieceIds);
     board.querySelectorAll('[data-piece]').forEach((node) => { node.onclick = (event) => { event.stopPropagation(); Game.inspectPiece(node.dataset.piece); }; node.onkeydown = (event) => { if (event.key === 'Enter' || event.key === ' ') node.onclick(event); }; });
-    board.querySelectorAll('.cell-hit').forEach((node) => { node.onclick = (event) => { event.stopPropagation(); if (targets.includes(node.dataset.point)) Game.send(node.dataset.point); else Game.boardCell(node.dataset.point); }; });
   },
 };
 Board.init();
