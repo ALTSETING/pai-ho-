@@ -36,13 +36,35 @@ test('formation uses cell centers and an exact 180 degree rotation', () => {
     assert.ok(guest, `missing rotated peer for ${host.id}`);
     const cell = E.cellMap.get(host.position);
     assert.ok(cell && cell.polygonPoints.length === 4);
+    assert.equal(host.cellId, cell.id);
+    assert.equal(host.row, cell.row);
+    assert.equal(host.column, cell.column);
     assert.equal(cell.centerX, cell.polygonPoints[0].x);
     assert.notEqual(cell.centerY, cell.polygonPoints[0].y);
   }
-  assert.equal(piece(g, 'one', 'avatar').position, '0,-2');
-  assert.equal(piece(g, 'one', 'lotus').position, '0,-6');
-  assert.equal(piece(g, 'two', 'avatar').position, '0,2');
-  assert.equal(piece(g, 'two', 'lotus').position, '0,6');
+  assert.equal(piece(g, 'one', 'avatar').position, '0,-4');
+  assert.equal(piece(g, 'one', 'lotus').position, '0,-8');
+  assert.equal(piece(g, 'two', 'avatar').position, '0,4');
+  assert.equal(piece(g, 'two', 'lotus').position, '0,8');
+});
+test('initial visual geometry is separated, centered in cells, and clear of the portal', () => {
+  const g = game();
+  const expectedCenters = [[500, 85], [466, 135], [534, 135], [432, 185], [568, 185], [466, 235], [534, 235], [364, 285], [432, 285], [500, 285], [568, 285], [636, 285], [466, 335], [534, 335]];
+  const occupied = g.board.map((tile) => E.cellMap.get(tile.position));
+  const host = g.board.filter((tile) => tile.owner === 'one').map((tile) => E.cellMap.get(tile.position));
+  const guest = g.board.filter((tile) => tile.owner === 'two').map((tile) => E.cellMap.get(tile.position));
+  assert.deepEqual(host.map((cell) => [cell.centerX, cell.centerY]), expectedCenters);
+  assert.deepEqual(guest.map((cell) => [cell.centerX, cell.centerY]), expectedCenters.map(([x, y]) => [1000 - x, 1000 - y]));
+  assert.ok(Math.max(...host.map((cell) => cell.centerY)) <= 350);
+  assert.ok(Math.min(...guest.map((cell) => cell.centerY)) >= 650);
+  assert.ok(!g.board.some((tile) => tile.position === '0,0'));
+  for (let i = 0; i < occupied.length; i += 1) {
+    const cell = occupied[i];
+    assert.ok(cell.centerX >= 100 && cell.centerX <= 900 && cell.centerY >= 70 && cell.centerY <= 930);
+    for (let j = i + 1; j < occupied.length; j += 1) {
+      assert.ok(Math.hypot(cell.centerX - occupied[j].centerX, cell.centerY - occupied[j].centerY) >= 47);
+    }
+  }
 });
 test('ordinary adjacent movement works and alternates turn', () => { const g = sparse([['one', 'water', '0,-2']]); const n = E.applyMove(g, 'one', command('one-water-1', '1,-2')); assert.equal(piece(n, 'one', 'water').position, '1,-2'); assert.equal(n.activePlayer, 'two'); });
 test('illegal distant, occupied, off-board and foreign movement is rejected', () => { const g = sparse([['one', 'water', '0,0'], ['one', 'earth', '1,0'], ['two', 'fire', '2,0']]); for (const move of [command('one-water-1', '0,2'), command('one-water-1', '1,0'), command('one-water-1', '5,0'), command('two-fire-1', '2,1')]) assert.throws(() => E.applyMove(g, 'one', move), E.RuleError); });
@@ -61,4 +83,4 @@ test('trapped marked Lotus dies and awards victory', () => { const g = sparse([[
 test('safe Lotus reaching empty center wins immediately', () => { const n = E.applyMove(sparse([['one', 'lotus', '0,-1']]), 'one', command('one-lotus-1', '0,0')); assert.deepEqual(n.result, { winnerId: 'one', reason: 'lotus_reached_center' }); });
 test('enemy in Spirit Portal blocks win until sector is cleared', () => { let g = sparse([['one', 'lotus', '0,-1'], ['two', 'water', '1,1']]); g = E.applyMove(g, 'one', command('one-lotus-1', '0,0')); assert.equal(g.result, null); g = E.applyMove(g, 'two', command('two-water-1', '2,1')); assert.deepEqual(g.result, { winnerId: 'one', reason: 'lotus_reached_center' }); });
 test('resignation has the required server result', () => { const n = E.applyMove(game(), 'one', { commandId: crypto.randomUUID(), kind: 'resign' }); assert.deepEqual(n.result, { winnerId: 'two', reason: 'resignation' }); });
-test('two clients receive the same serializable authoritative state', () => { const saved = E.applyMove(game(), 'one', command('one-lotus-1', '1,-6')); const clientA = structuredClone(saved); const clientB = structuredClone(saved); assert.deepEqual(clientA, clientB); assert.deepEqual(clientA.legalMoves, clientB.legalMoves); });
+test('two clients receive the same serializable authoritative state', () => { const saved = E.applyMove(game(), 'one', command('one-lotus-1', '1,-8')); const clientA = structuredClone(saved); const clientB = structuredClone(saved); assert.deepEqual(clientA, clientB); assert.deepEqual(clientA.legalMoves, clientB.legalMoves); });
