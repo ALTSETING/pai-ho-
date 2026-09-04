@@ -1,12 +1,20 @@
 'use strict';
 const crypto = require('node:crypto');
-const { cells, cellMap, adjacentIds, DIRECTIONS } = require('./board');
-const { TILE_TYPES, ELEMENTS, getCombatResult } = require('./tiles');
+const { cells, cellMap, adjacentIds, rotateCell180, DIRECTIONS } = require('./board');
+const { TILE_TYPES, ELEMENTS, TILE_COUNTS, getCombatResult } = require('./tiles');
 
 class RuleError extends Error {}
+const TOP_FORMATION = Object.freeze([
+  ['lotus', '0,-6'],
+  ['air', '-1,-5'], ['earth', '1,-5'],
+  ['water', '-2,-4'], ['fire', '2,-4'],
+  ['earth', '-1,-3'], ['air', '1,-3'],
+  ['water', '-4,-2'], ['fire', '-2,-2'], ['avatar', '0,-2'], ['water', '2,-2'], ['fire', '4,-2'],
+  ['air', '-1,-1'], ['earth', '1,-1'],
+]);
 const INITIAL_POSITIONS = Object.freeze({
-  host: Object.freeze({ water: '-2,-2', earth: '2,-2', fire: '-1,-3', air: '1,-3', avatar: '0,-2', lotus: '0,-4' }),
-  guest: Object.freeze({ water: '2,2', earth: '-2,2', fire: '1,3', air: '-1,3', avatar: '0,2', lotus: '0,4' }),
+  host: TOP_FORMATION.map(([type, position]) => Object.freeze({ type, position })),
+  guest: TOP_FORMATION.map(([type, position]) => Object.freeze({ type, position: rotateCell180(position).id })),
 });
 const playerIds = (state) => Object.keys(state.players);
 const other = (state, player) => playerIds(state).find((id) => id !== player);
@@ -14,7 +22,11 @@ const tileAt = (state, position) => state.board.find((tile) => tile.position ===
 const enemyAdjacent = (state, tile, type) => adjacentIds(tile.position).map((id) => tileAt(state, id)).filter((candidate) => candidate && candidate.owner !== tile.owner && (!type || candidate.type === type));
 
 function createPieces(owner, side) {
-  return TILE_TYPES.map((type) => ({ id: `${owner}-${type}`, owner, type, position: INITIAL_POSITIONS[side][type], startPosition: INITIAL_POSITIONS[side][type], lotusState: type === 'lotus' ? 'safe' : undefined, waiting: false }));
+  const counters = {};
+  return INITIAL_POSITIONS[side].map(({ type, position }) => {
+    counters[type] = (counters[type] || 0) + 1;
+    return { id: `${owner}-${type}-${counters[type]}`, owner, type, position, startPosition: position, lotusState: type === 'lotus' ? 'safe' : undefined, waiting: false };
+  });
 }
 
 function createGame(players, id = crypto.randomUUID()) {
@@ -118,4 +130,4 @@ function applyMove(state, player, move) {
   next.legalMoves = legalMovesForActivePlayer(next); return next;
 }
 
-module.exports = { RuleError, cells, cellMap, adjacentIds, TILE_TYPES, ELEMENTS, INITIAL_POSITIONS, getCombatResult, legalTargets, createGame, applyMove };
+module.exports = { RuleError, cells, cellMap, adjacentIds, rotateCell180, TILE_TYPES, TILE_COUNTS, ELEMENTS, TOP_FORMATION, INITIAL_POSITIONS, getCombatResult, legalTargets, createGame, applyMove };
