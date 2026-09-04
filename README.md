@@ -1,4 +1,4 @@
-# Skud Pai Sho — приватна онлайн-гра для двох
+# Modern Pai Sho — приватна онлайн-гра для двох
 
 Проєкт складається з незалежного статичного frontend (`frontend/`) і авторитетного Node.js
 backend (`server/`). Немає Next.js, React, TypeScript, pnpm, workspace або frontend build step.
@@ -25,7 +25,7 @@ Production frontend одразу звертається до
 `https://pai-sho-server-altseting.onrender.com`. Для локальної ручної перевірки можна
 тимчасово замінити обидві адреси у `frontend/config.js` на `http://localhost:3000`, не
 комітячи цю зміну. Відкрийте `http://localhost:8080` у двох незалежних профілях браузера,
-увійдіть різними акаунтами, натисніть «Готовий» і виберіть по дві Accent Tiles.
+увійдіть різними акаунтами та натисніть «Готовий» — дзеркальна розстановка створиться автоматично.
 
 Акаунти приватної гри зберігаються лише в `server/src/config.js`. Backend видає випадкові
 bearer tokens і зберігає сесії в пам’яті. Паролі не надсилаються у frontend state, lobby,

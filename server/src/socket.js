@@ -2,8 +2,8 @@
 
 const { Server } = require('socket.io');
 const auth = require('./auth');
-const { moveSchema, accentSchema, rematchSchema } = require('./validation');
-const { createGame, selectAccents, applyMove } = require('./game-engine');
+const { moveSchema, rematchSchema } = require('./validation');
+const { createGame, applyMove } = require('./game-engine');
 
 function configureSocket(server, corsOptions, lobby, store) {
   const io = new Server(server, { cors: corsOptions });
@@ -44,29 +44,6 @@ function configureSocket(server, corsOptions, lobby, store) {
     };
     socket.on('player:ready', () => ready(true));
     socket.on('player:unready', () => ready(false));
-
-    socket.on('game:select_accents', async (raw) => {
-      const parsed = accentSchema.safeParse(raw);
-      if (!parsed.success) {
-        socket.emit('game:move_rejected', {
-          commandId: raw?.commandId || '',
-          reason: 'Оберіть дві різні акцентні плитки',
-        });
-        return;
-      }
-      try {
-        const next = await store.atomic((game) => {
-          if (!game) throw Error('Партію не знайдено');
-          return store.save(selectAccents(game, playerId, parsed.data.accents), game.version);
-        });
-        io.emit('game:state', next);
-      } catch (error) {
-        socket.emit('game:move_rejected', {
-          commandId: parsed.data.commandId,
-          reason: error.message,
-        });
-      }
-    });
 
     const move = async (raw) => {
       const parsed = moveSchema.safeParse(raw);

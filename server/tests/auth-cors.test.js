@@ -11,8 +11,8 @@ test('both fixed accounts can log in without exposing credentials', () => {
   const denis = auth.login(PLAYERS[0].username, PLAYERS[0].password);
   const friend = auth.login(PLAYERS[1].username, PLAYERS[1].password);
 
-  assert.deepEqual(denis.player, { id: 'player-one', name: 'Denis' });
-  assert.deepEqual(friend.player, { id: 'player-two', name: 'Друг' });
+  assert.deepEqual(denis.player, { id: PLAYERS[0].id, name: PLAYERS[0].displayName });
+  assert.deepEqual(friend.player, { id: PLAYERS[1].id, name: PLAYERS[1].displayName });
   assert.equal(auth.verify(denis.token), 'player-one');
   assert.equal(auth.verify(friend.token), 'player-two');
   assert.equal(JSON.stringify([denis, friend]).includes(PLAYERS[0].password), false);
@@ -35,8 +35,7 @@ test('public lobby state contains display names but no passwords or usernames', 
   assert.equal(serialized.includes(PLAYERS[0].password), false);
   assert.equal(serialized.includes(PLAYERS[1].password), false);
   assert.equal(serialized.includes('username'), false);
-  assert.match(serialized, /Denis/);
-  assert.match(serialized, /Друг/);
+  assert.ok(PLAYERS.every((player) => serialized.includes(player.displayName)));
 });
 
 test('CORS accepts Vercel, localhost and requests without an Origin only', () => {

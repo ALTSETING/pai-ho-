@@ -2,7 +2,7 @@
   "name": "pai-sho-server",
   "version": "1.0.0",
   "private": true,
-  "description": "Authoritative two-player Skud Pai Sho server",
+  "description": "Authoritative two-player Modern Pai Sho server",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

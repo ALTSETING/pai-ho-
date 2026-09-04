@@ -1,129 +1,121 @@
 'use strict';
 const crypto = require('node:crypto');
-const { points, pointMap, pathBetween } = require('./board');
-const { BASIC, ACCENTS, RED, WHITE, RANGE, HARMONY, CLASH, createReserve } = require('./tiles');
+const { cells, cellMap, adjacentIds, DIRECTIONS } = require('./board');
+const { TILE_TYPES, ELEMENTS, getCombatResult } = require('./tiles');
+
 class RuleError extends Error {}
+const INITIAL_POSITIONS = Object.freeze({
+  host: Object.freeze({ water: '-1,-4', earth: '1,-4', fire: '2,-3', air: '-2,-3', avatar: '0,-4', lotus: '0,-3' }),
+  guest: Object.freeze({ water: '1,4', earth: '-1,4', fire: '-2,3', air: '2,3', avatar: '0,4', lotus: '0,3' }),
+});
 const playerIds = (state) => Object.keys(state.players);
 const other = (state, player) => playerIds(state).find((id) => id !== player);
-const tileAt = (state, point) => state.board.find((tile) => tile.position === point);
-const location = (tile) => tile.position && pointMap.get(tile.position);
-function canOccupy(tile, point) {
-  if (tile.kind !== 'basic') return true;
-  if (RED.has(tile.type)) return point.garden !== 'white';
-  if (WHITE.has(tile.type)) return point.garden !== 'red';
-  return true;
+const tileAt = (state, position) => state.board.find((tile) => tile.position === position);
+const enemyAdjacent = (state, tile, type) => adjacentIds(tile.position).map((id) => tileAt(state, id)).filter((candidate) => candidate && candidate.owner !== tile.owner && (!type || candidate.type === type));
+
+function createPieces(owner, side) {
+  return TILE_TYPES.map((type) => ({ id: `${owner}-${type}`, owner, type, position: INITIAL_POSITIONS[side][type], startPosition: INITIAL_POSITIONS[side][type], lotusState: type === 'lotus' ? 'safe' : undefined, waiting: false }));
 }
-function suppressed(tile, board) {
-  const at = location(tile);
-  return Boolean(at && board.some((candidate) => candidate.type === 'knotweed' && location(candidate) && Math.max(Math.abs(location(candidate).x - at.x), Math.abs(location(candidate).y - at.y)) <= 1));
-}
-function legalTargets(state, tileId) {
-  const tile = [
-    ...state.board,
-    ...Object.values(state.reserves).flat(),
-  ].find((item) => item.id === tileId);
-  if (!tile) return [];
-  if (!tile.position) return points.filter((point) => point.gate && !tileAt(state, point.id) && canOccupy(tile, point)).map((point) => point.id);
-  const from = location(tile);
-  return points.filter((to) => {
-    const path = pathBetween(from, to);
-    if (!path.length || path.length > RANGE[tile.type] || !canOccupy(tile, to)) return false;
-    if (path.slice(0, -1).some((point) => tileAt(state, point.id))) return false;
-    const occupant = tileAt(state, to.id);
-    if (!occupant) return true;
-    if (occupant.owner === tile.owner || occupant.type === 'rock' || tile.type === 'rock' || tile.type === 'knotweed') return false;
-    if (tile.type === 'boat') return true;
-    if (tile.type === 'orchid') return occupant.kind === 'basic' && !suppressed(tile, state.board);
-    return Boolean(CLASH[tile.type]?.includes(occupant.type));
-  }).map((point) => point.id);
-}
-function calculateHarmonies(board) {
-  const result = [];
-  for (let i = 0; i < board.length; i += 1) for (let j = i + 1; j < board.length; j += 1) {
-    const a = board[i]; const b = board[j]; const pa = location(a); const pb = location(b);
-    if (!pa || !pb || a.owner !== b.owner || !a.blooming || !b.blooming || suppressed(a, board) || suppressed(b, board)) continue;
-    if (!HARMONY[a.type]?.includes(b.type) && !HARMONY[b.type]?.includes(a.type)) continue;
-    if (pa.x !== pb.x && pa.y !== pb.y) continue;
-    const between = pathBetween(pa, pb).slice(0, -1);
-    if (board.some((tile) => tile !== a && tile !== b && between.some((point) => point.id === tile.position))) continue;
-    result.push({ a: a.id, b: b.id, midline: pa.x * pb.x < 0 || pa.y * pb.y < 0 });
-  }
-  return result;
-}
-function formsHarmonyRing(harmonies) {
-  const graph = new Map();
-  for (const edge of harmonies) {
-    graph.set(edge.a, [...(graph.get(edge.a) || []), edge.b]);
-    graph.set(edge.b, [...(graph.get(edge.b) || []), edge.a]);
-  }
-  function cycle(node, parent, visited) {
-    visited.add(node);
-    for (const neighbor of graph.get(node) || []) {
-      if (!visited.has(neighbor)) { if (cycle(neighbor, node, visited)) return true; }
-      else if (neighbor !== parent) return true;
-    }
-    return false;
-  }
-  const visited = new Set();
-  return [...graph.keys()].some((node) => !visited.has(node) && cycle(node, null, visited));
-}
+
 function createGame(players, id = crypto.randomUUID()) {
-  const now = new Date().toISOString();
   const ids = Object.keys(players);
   if (ids.length !== 2) throw new RuleError('Для партії потрібні рівно два гравці');
-  const emptyPlayerLists = () => Object.fromEntries(ids.map((playerId) => [playerId, []]));
-  return { id, rulesVersion: 'Skud Pai Sho (no expansions)', players: structuredClone(players), board: [], reserves: emptyPlayerLists(), selectedAccents: emptyPlayerLists(), activePlayer: ids.find((playerId) => players[playerId].side === 'host') || ids[0], turn: 1, phase: 'setup', harmonies: [], moves: [], result: null, createdAt: now, updatedAt: now, version: 0, rematch: Object.fromEntries(ids.map((playerId) => [playerId, false])), lastMove: null };
+  const board = ids.flatMap((playerId, index) => createPieces(playerId, players[playerId].side === 'host' || (!players[playerId].side && index === 0) ? 'host' : 'guest'));
+  const now = new Date().toISOString();
+  const state = { id, rulesVersion: 'Modern Pai Sho', players: structuredClone(players), board, activePlayer: ids.find((playerId) => players[playerId].side === 'host') || ids[0], turn: 1, phase: 'playing', moves: [], captured: Object.fromEntries(ids.map((playerId) => [playerId, []])), legalMoves: {}, result: null, createdAt: now, updatedAt: now, version: 0, rematch: Object.fromEntries(ids.map((playerId) => [playerId, false])), lastMove: null };
+  state.legalMoves = legalMovesForActivePlayer(state); return state;
 }
-function selectAccents(state, player, accents) {
-  if (state.phase !== 'setup') throw new RuleError('Вибір акцентів уже завершено');
-  if (!Array.isArray(accents) || accents.length !== 2 || new Set(accents).size !== 2 || accents.some((type) => !ACCENTS.includes(type))) throw new RuleError('Оберіть рівно дві різні акцентні плитки');
-  const next = structuredClone(state); next.selectedAccents[player] = accents;
-  if (Object.values(next.selectedAccents).every((selection) => selection.length)) {
-    playerIds(next).forEach((playerId) => {
-      next.reserves[playerId] = createReserve(playerId, next.selectedAccents[playerId]);
-    });
-    next.phase = 'playing';
+
+function jumpTargets(state, tile) {
+  if (tile.type === 'lotus') return [];
+  const from = cellMap.get(tile.position); const found = new Set(); const visited = new Set([tile.position]);
+  function visit(cell) {
+    for (const [dx, dy] of DIRECTIONS) {
+      const middleId = `${cell.x + dx},${cell.y + dy}`; const landingId = `${cell.x + 2 * dx},${cell.y + 2 * dy}`;
+      const middle = tileAt(state, middleId);
+      if (!cellMap.has(landingId) || tileAt(state, landingId) || !middle || middle.owner !== tile.owner || visited.has(landingId)) continue;
+      found.add(landingId); visited.add(landingId); visit(cellMap.get(landingId));
+    }
   }
-  next.version += 1; next.updatedAt = new Date().toISOString(); return next;
+  visit(from); return [...found];
 }
-function hasAnyMove(state, player) { return [...state.board.filter((tile) => tile.owner === player), ...state.reserves[player]].some((tile) => legalTargets(state, tile.id).length); }
-function finish(state, result, player, move) {
-  const next = structuredClone(state); next.phase = 'finished'; next.result = result; next.updatedAt = new Date().toISOString();
-  if (move.kind === 'resign') next.moves.push({ turn: next.turn, player, move, at: next.updatedAt, notation: 'Здача' });
-  return next;
+
+function legalTargets(state, tileId) {
+  const tile = state.board.find((candidate) => candidate.id === tileId);
+  if (!tile || !tile.position || tile.lotusState === 'dead' || tile.waiting) return [];
+  let targets = [...adjacentIds(tile.position).filter((id) => !tileAt(state, id)), ...jumpTargets(state, tile)];
+  if (tile.type === 'lotus' && tile.lotusState === 'marked') targets = targets.filter((id) => !adjacentIds(id).some((near) => { const piece = tileAt(state, near); return piece && piece.owner !== tile.owner && piece.type === 'avatar'; }));
+  return [...new Set(targets)];
 }
+function legalMovesForActivePlayer(state) {
+  return Object.fromEntries(state.board.filter((tile) => tile.owner === state.activePlayer && tile.position).map((tile) => [tile.id, legalTargets(state, tile.id)]));
+}
+
+function finish(next, winnerId, reason) { next.phase = 'finished'; next.result = { winnerId, reason }; return next; }
+function capture(next, tile, captor) {
+  tile.position = null; tile.waiting = false;
+  if (tile.type === 'lotus') tile.lotusState = 'dead';
+  next.captured[captor].push(tile.type);
+}
+function restoreWaitingAvatars(next) {
+  for (const avatar of next.board.filter((tile) => tile.type === 'avatar' && tile.waiting)) if (!tileAt(next, avatar.startPosition)) { avatar.position = avatar.startPosition; avatar.waiting = false; }
+}
+function portalWinner(next) {
+  for (const lotus of next.board.filter((tile) => tile.type === 'lotus' && tile.position === '0,0' && tile.lotusState === 'safe')) {
+    const enemyInSector = next.board.some((tile) => tile.owner !== lotus.owner && tile.position && cellMap.get(tile.position)?.spiritPortal);
+    if (!enemyInSector) return lotus.owner;
+  }
+  return null;
+}
+
 function applyMove(state, player, move) {
-  if (state.moves.some((record) => record.move.commandId === move.commandId)) return state;
+  if (move.commandId && state.moves.some((record) => record.move.commandId === move.commandId)) return state;
   if (state.phase !== 'playing') throw new RuleError('Партія не активна');
   if (player !== state.activePlayer) throw new RuleError('Зараз хід суперника');
-  if (move.kind === 'resign') return finish(state, { winner: other(state, player), reason: 'resignation' }, player, move);
-  if (!move.tileId || !move.to) throw new RuleError('Оберіть плитку та ціль');
-  const owned = [...state.board, ...state.reserves[player]].find((tile) => tile.id === move.tileId && tile.owner === player);
-  if (!owned) throw new RuleError('Ця плитка вам не належить');
-  if (!legalTargets(state, owned.id).includes(move.to)) throw new RuleError('Недозволена ціль, Garden або заблокований шлях');
-  const next = structuredClone(state); let tile = next.board.find((item) => item.id === owned.id);
-  if (!tile) { const index = next.reserves[player].findIndex((item) => item.id === owned.id); tile = next.reserves[player].splice(index, 1)[0]; next.board.push(tile); }
-  const destination = next.board.find((item) => item.position === move.to && item.id !== tile.id);
-  if (destination) {
-    if (tile.type === 'boat' && move.secondaryTo && pointMap.has(move.secondaryTo) && !tileAt(next, move.secondaryTo)) destination.position = move.secondaryTo;
-    else next.board = next.board.filter((item) => item.id !== destination.id);
+  const next = structuredClone(state);
+  if (move.kind === 'resign') {
+    next.moves.push({ turn: next.turn, player, move, notation: 'Здача', at: new Date().toISOString() });
+    next.version += 1; next.updatedAt = new Date().toISOString(); return finish(next, other(next, player), 'resignation');
   }
-  tile.position = move.to; tile.blooming = tile.kind === 'basic' && !pointMap.get(move.to).gate;
-  // Wheel rotates every occupied adjacent point 90° clockwise when all destinations are valid.
-  if (tile.type === 'wheel') {
-    const center = pointMap.get(move.to); const adjacent = next.board.filter((item) => item.id !== tile.id && location(item) && Math.max(Math.abs(location(item).x - center.x), Math.abs(location(item).y - center.y)) === 1);
-    const rotations = adjacent.map((item) => ({ item, to: pointMap.get(`${center.x + (location(item).y - center.y)},${center.y - (location(item).x - center.x)}`) }));
-    if (rotations.every((entry) => entry.to && !next.board.some((item) => !adjacent.includes(item) && item.position === entry.to.id))) rotations.forEach((entry) => { entry.item.position = entry.to.id; });
+  const markedLotus = next.board.find((tile) => tile.owner === player && tile.type === 'lotus' && tile.lotusState === 'marked');
+  if (markedLotus && !legalTargets(next, markedLotus.id).length) { capture(next, markedLotus, other(next, player)); return finish(next, other(next, player), 'lotus_dead'); }
+  if (markedLotus && move.tileId !== markedLotus.id) throw new RuleError('Ваш Лотос позначений. Пересуньте його зараз, інакше ви програєте.');
+  const tile = next.board.find((candidate) => candidate.id === move.tileId);
+  if (!tile || tile.owner !== player) throw new RuleError('Ця фішка вам не належить');
+  if (!move.to || !legalTargets(next, tile.id).includes(move.to)) throw new RuleError('Недозволений хід');
+  const from = tile.position; tile.position = move.to;
+
+  if (tile.type === 'avatar') {
+    for (const enemy of enemyAdjacent(next, tile)) {
+      if (ELEMENTS.includes(enemy.type)) capture(next, enemy, player);
+      else if (enemy.type === 'lotus' && enemy.lotusState !== 'dead') enemy.lotusState = 'marked';
+    }
+  } else if (ELEMENTS.includes(tile.type)) {
+    for (const enemy of enemyAdjacent(next, tile)) {
+      if (!tile.position) break;
+      if (enemy.type === 'avatar') { enemy.position = null; enemy.waiting = true; }
+      else if (ELEMENTS.includes(enemy.type)) {
+        const result = getCombatResult(tile.type, enemy.type);
+        if (result === 'win') capture(next, enemy, player);
+        if (result === 'lose') capture(next, tile, enemy.owner);
+      }
+    }
+  } else if (tile.type === 'lotus') {
+    tile.lotusState = enemyAdjacent(next, tile, 'avatar').length ? 'marked' : 'safe';
   }
-  next.lastMove = move; next.turn += 1; next.activePlayer = other(next, player); next.harmonies = calculateHarmonies(next.board); next.version += 1; next.updatedAt = new Date().toISOString();
-  next.moves.push({ turn: next.turn - 1, player, move, at: next.updatedAt, notation: `${move.kind === 'plant' ? 'Plant' : 'Arrange'} ${tile.type} → ${move.to}` });
-  const playerHarmonies = next.harmonies.filter((harmony) => next.board.find((item) => item.id === harmony.a)?.owner === player);
-  if (formsHarmonyRing(playerHarmonies)) return finish(next, { winner: player, reason: 'harmony-ring' }, player, move);
-  if (Object.values(next.reserves).every((reserve) => !reserve.some((item) => item.kind === 'basic'))) {
-    const score = (owner) => next.harmonies.filter((harmony) => harmony.midline && next.board.find((item) => item.id === harmony.a)?.owner === owner).length;
-    const [first, second] = playerIds(next); const firstScore = score(first); const secondScore = score(second); return finish(next, { winner: firstScore === secondScore ? null : firstScore > secondScore ? first : second, reason: firstScore === secondScore ? 'draw' : 'last-basic' }, player, move);
-  }
-  if (!hasAnyMove(next, next.activePlayer)) throw new RuleError('Хід заборонено: суперник не матиме можливих дій');
-  return next;
+  restoreWaitingAvatars(next);
+  // An Avatar restored beside a Lotus is dangerous too.
+  for (const lotus of next.board.filter((piece) => piece.type === 'lotus' && piece.position && piece.lotusState !== 'dead')) if (enemyAdjacent(next, lotus, 'avatar').length) lotus.lotusState = 'marked';
+
+  next.lastMove = { tileId: tile.id, type: tile.type, from, to: move.to, player };
+  next.moves.push({ turn: next.turn, player, move, at: new Date().toISOString(), notation: `${tile.type} ${from} → ${move.to}` });
+  next.turn += 1; next.activePlayer = other(next, player); next.version += 1; next.updatedAt = new Date().toISOString();
+  const deadLotus = next.board.find((piece) => piece.type === 'lotus' && piece.lotusState === 'dead');
+  if (deadLotus) return finish(next, other(next, deadLotus.owner), 'lotus_dead');
+  const winner = portalWinner(next); if (winner) return finish(next, winner, 'lotus_reached_center');
+  const nextMarked = next.board.find((piece) => piece.owner === next.activePlayer && piece.type === 'lotus' && piece.lotusState === 'marked');
+  if (nextMarked && !legalTargets(next, nextMarked.id).length) { capture(next, nextMarked, player); return finish(next, player, 'lotus_dead'); }
+  next.legalMoves = legalMovesForActivePlayer(next); return next;
 }
-module.exports = { RuleError, points, pointMap, pathBetween, BASIC, ACCENTS, RANGE, HARMONY, CLASH, canOccupy, legalTargets, calculateHarmonies, formsHarmonyRing, createGame, selectAccents, applyMove };
+
+module.exports = { RuleError, cells, cellMap, adjacentIds, TILE_TYPES, ELEMENTS, INITIAL_POSITIONS, getCombatResult, legalTargets, createGame, applyMove };
