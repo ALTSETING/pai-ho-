@@ -4,7 +4,7 @@ const REASONS = { lotus_dead: 'Лотос суперника загинув', lo
 const COMBAT = { earth: { wins: 'Вогонь', loses: 'Вода', neutral: 'Повітря' }, fire: { wins: 'Повітря', loses: 'Земля', neutral: 'Вода' }, air: { wins: 'Вода', loses: 'Вогонь', neutral: 'Земля' }, water: { wins: 'Землю', loses: 'Повітря', neutral: 'Вогонь' } };
 
 window.Game = {
-  me: null, state: null, selected: null, targets: [], pending: false,
+  me: null, state: null, selected: null, targets: [], pending: false, sound: true, audioReady: false,
   label(type) { return LABELS[type] || type; },
   async start() { PaiAuth.bind(); Lobby.bind(); this.me = await PaiAuth.restore(); if (this.me) await this.online(); else UI.show('login'); },
   async online() {
@@ -29,8 +29,8 @@ window.Game = {
     document.querySelector('#moves').innerHTML = state.moves.slice(-10).reverse().map((move) => `<li><b>${move.turn}.</b> ${UI.escape(move.notation)}</li>`).join('') || '<li>Ще немає ходів</li>';
     const captured = Object.entries(state.captured).flatMap(([owner, types]) => types.map((type) => `${owner === this.me.id ? 'Ви' : 'Суперник'}: ${LABELS[type]}`));
     document.querySelector('#captured').innerHTML = captured.map((text) => `<li>${UI.escape(text)}</li>`).join('') || '<li>Немає</li>';
-    this.renderElements(); this.renderPlayers(); Board.draw(state, this.targets, this.selected);
-    if (previous?.version !== state.version) document.querySelector('#board').classList.add('state-changed');
+    this.renderElements(); this.renderPlayers(); Board.draw(state, this.targets, this.selected, Boolean(previous) && state.version === previous.version + 1);
+    if (previous?.version !== state.version) { document.querySelector('#pai-sho-board').classList.add('state-changed'); if (previous && state.lastMove?.player === this.me.id) this.playTone(state.captured[this.me.id].length > previous.captured[this.me.id].length); }
     if (state.result) { document.querySelector('#result-title').textContent = state.result.winnerId === this.me.id ? 'Ви перемогли' : 'Переміг суперник'; document.querySelector('#result-reason').textContent = REASONS[state.result.reason] || state.result.reason; document.querySelector('#result').hidden = false; }
   },
   renderElements() {
@@ -60,11 +60,27 @@ window.Game = {
     PaiSocket.emit('game:move', { commandId: crypto.randomUUID(), kind: 'move', tileId: this.selected.id, to });
     this.selected = null; this.targets = [];
   },
+  playTone(capture=false) {
+    if (!this.sound || !this.audioReady) return;
+    const context = this.audioContext ||= new AudioContext(); const oscillator = context.createOscillator(); const gain = context.createGain();
+    oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(capture ? 260 : 440, context.currentTime); oscillator.frequency.exponentialRampToValueAtTime(capture ? 110 : 330, context.currentTime + .16); gain.gain.setValueAtTime(.035, context.currentTime); gain.gain.exponentialRampToValueAtTime(.001, context.currentTime + .2); oscillator.connect(gain).connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime + .21);
+  },
+  async logout() {
+    const dialog = document.querySelector('#logout-confirm');
+    document.querySelector('#logout-message').textContent = this.state?.phase === 'playing' ? 'Вийти з акаунта? Партія залишиться активною, і ви зможете повернутися після повторного входу.' : 'Вийти з акаунта і повернутися на екран входу?';
+    dialog.showModal(); const confirmed = await new Promise(resolve => { dialog.querySelector('[value="cancel"]').onclick=()=>{dialog.close();resolve(false)};dialog.querySelector('[value="confirm"]').onclick=()=>{dialog.close();resolve(true)}; });
+    if (!confirmed) return;
+    try { await PaiApi.logout(); } catch { /* Local logout must still succeed offline. */ }
+    PaiSocket.disconnect(); this.me=null;this.state=null;this.selected=null;this.targets=[];this.pending=false;Lobby.state=null;document.querySelector('#result').hidden=true;await transitionToScreen('login');document.querySelector('#login-form').reset();
+  }
 };
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelector('#resign').onclick = () => confirm('Справді здатися?') && PaiSocket.emit('game:resign', { commandId: crypto.randomUUID() });
   document.querySelector('#rematch').onclick = () => PaiSocket.emit('game:rematch', { gameId: Game.state.id });
   document.querySelector('#rules-open').onclick = () => document.querySelector('#rules').showModal();
+  document.querySelectorAll('.logout').forEach(button => button.onclick = () => Game.logout());
+  document.querySelector('#sound-toggle').onclick = (event) => { Game.audioReady=true;Game.sound=!Game.sound;event.currentTarget.textContent=Game.sound?'♪':'♩';event.currentTarget.setAttribute('aria-label',Game.sound?'Вимкнути звук':'Увімкнути звук'); };
+  document.addEventListener('pointerdown',()=>{Game.audioReady=true},{once:true});
   document.querySelector('.board-wrap').addEventListener('click', (event) => { if (event.target.closest('[data-piece],.move-target')) return; if (Game.selected) { Game.selected = null; Game.targets = []; Game.render(Game.state); } });
   Game.start();
 });
