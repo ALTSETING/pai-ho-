@@ -5,8 +5,8 @@ const { TILE_TYPES, ELEMENTS, getCombatResult } = require('./tiles');
 
 class RuleError extends Error {}
 const INITIAL_POSITIONS = Object.freeze({
-  host: Object.freeze({ water: '-1,-4', earth: '1,-4', fire: '2,-3', air: '-2,-3', avatar: '0,-4', lotus: '0,-3' }),
-  guest: Object.freeze({ water: '1,4', earth: '-1,4', fire: '-2,3', air: '2,3', avatar: '0,4', lotus: '0,3' }),
+  host: Object.freeze({ water: '-2,-2', earth: '2,-2', fire: '-1,-3', air: '1,-3', avatar: '0,-2', lotus: '0,-4' }),
+  guest: Object.freeze({ water: '2,2', earth: '-2,2', fire: '1,3', air: '-1,3', avatar: '0,2', lotus: '0,4' }),
 });
 const playerIds = (state) => Object.keys(state.players);
 const other = (state, player) => playerIds(state).find((id) => id !== player);

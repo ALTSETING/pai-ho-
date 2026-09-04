@@ -1,25 +1,70 @@
 'use strict';
 const LABELS = { water: 'Вода', earth: 'Земля', fire: 'Вогонь', air: 'Повітря', avatar: 'Аватар', lotus: 'Лотос' };
 const REASONS = { lotus_dead: 'Лотос суперника загинув', lotus_reached_center: 'Лотос дістався Spirit Portal', resignation: 'Суперник здався' };
+const COMBAT = { earth: { wins: 'Вогонь', loses: 'Вода', neutral: 'Повітря' }, fire: { wins: 'Повітря', loses: 'Земля', neutral: 'Вода' }, air: { wins: 'Вода', loses: 'Вогонь', neutral: 'Земля' }, water: { wins: 'Землю', loses: 'Повітря', neutral: 'Вогонь' } };
+
 window.Game = {
-  me: null, state: null, selected: null, targets: [],
+  me: null, state: null, selected: null, targets: [], pending: false,
+  label(type) { return LABELS[type] || type; },
   async start() { PaiAuth.bind(); Lobby.bind(); this.me = await PaiAuth.restore(); if (this.me) await this.online(); else UI.show('login'); },
-  async online() { UI.show('lobby'); const socket = await PaiSocket.connect(); socket.on('connect', () => { UI.connection(true); socket.emit('lobby:join'); }); socket.on('disconnect', () => UI.connection(false)); socket.on('connect_error', (error) => UI.error(error.message)); socket.on('lobby:state', (state) => Lobby.render(state)); socket.on('game:started', (state) => this.render(state)); socket.on('game:state', (state) => this.render(state)); socket.on('game:move_rejected', (error) => UI.error(error.reason)); socket.on('game:finished', () => {}); },
+  async online() {
+    UI.show('lobby'); const socket = await PaiSocket.connect();
+    socket.on('connect', () => { UI.connection(true); socket.emit('lobby:join'); });
+    socket.on('disconnect', () => UI.connection(false));
+    socket.on('connect_error', (error) => UI.error(error.message));
+    socket.on('lobby:state', (state) => Lobby.render(state));
+    socket.on('game:started', (state) => this.render(state));
+    socket.on('game:state', (state) => { this.pending = false; this.render(state); });
+    socket.on('game:move_rejected', (error) => { this.pending = false; UI.error(error.reason); this.render(this.state); });
+  },
   render(state) {
-    this.state = state; UI.error(''); UI.show('game');
+    const previous = this.state; this.state = state; UI.error(''); UI.show('game');
+    if (this.selected) this.selected = state.board.find((tile) => tile.id === this.selected.id && tile.position) || null;
+    this.targets = this.selected ? state.legalMoves[this.selected.id] || [] : [];
     const marked = state.board.find((tile) => tile.owner === this.me.id && tile.type === 'lotus' && tile.lotusState === 'marked');
     document.querySelector('#lotus-warning').hidden = !marked;
-    document.querySelector('#turn').textContent = state.phase === 'finished' ? 'Партію завершено' : state.activePlayer === this.me.id ? 'Ваш хід' : 'Хід суперника';
-    const mine = state.board.filter((tile) => tile.owner === this.me.id && tile.position);
-    document.querySelector('#pieces').innerHTML = mine.map((tile) => `<button class="tile-button ${this.selected?.id === tile.id ? 'selected' : ''} ${tile.lotusState === 'marked' ? 'marked' : ''}" data-id="${tile.id}" title="${LABELS[tile.type]}"><svg viewBox="-25 -25 50 50">${Board.tile(tile)}</svg><span>${LABELS[tile.type]}</span></button>`).join('');
-    document.querySelectorAll('.tile-button').forEach((button) => { button.onclick = () => this.choose(mine.find((tile) => tile.id === button.dataset.id)); });
-    document.querySelector('#moves').innerHTML = state.moves.slice(-12).reverse().map((move) => `<li><b>${move.turn}.</b> ${UI.escape(move.notation)}</li>`).join('') || '<li>Ще немає ходів</li>';
+    const mine = state.activePlayer === this.me.id;
+    const turn = document.querySelector('#turn'); turn.textContent = state.phase === 'finished' ? 'ПАРТІЮ ЗАВЕРШЕНО' : mine ? 'ВАШ ХІД' : 'ХІД СУПЕРНИКА'; turn.classList.toggle('mine', mine);
+    document.querySelector('#selection-help').textContent = this.pending ? 'Очікуємо підтвердження сервера…' : this.selected ? `${LABELS[this.selected.type]} · оберіть підсвічену клітину` : 'Оберіть свою фішку на дошці';
+    document.querySelector('#moves').innerHTML = state.moves.slice(-10).reverse().map((move) => `<li><b>${move.turn}.</b> ${UI.escape(move.notation)}</li>`).join('') || '<li>Ще немає ходів</li>';
     const captured = Object.entries(state.captured).flatMap(([owner, types]) => types.map((type) => `${owner === this.me.id ? 'Ви' : 'Суперник'}: ${LABELS[type]}`));
     document.querySelector('#captured').innerHTML = captured.map((text) => `<li>${UI.escape(text)}</li>`).join('') || '<li>Немає</li>';
-    Board.draw(state, this.targets);
+    this.renderElements(); this.renderPlayers(); Board.draw(state, this.targets, this.selected);
+    if (previous?.version !== state.version) document.querySelector('#board').classList.add('state-changed');
     if (state.result) { document.querySelector('#result-title').textContent = state.result.winnerId === this.me.id ? 'Ви перемогли' : 'Переміг суперник'; document.querySelector('#result-reason').textContent = REASONS[state.result.reason] || state.result.reason; document.querySelector('#result').hidden = false; }
   },
-  choose(tile) { if (this.state.phase !== 'playing' || this.state.activePlayer !== this.me.id) return; this.selected = tile; this.targets = this.state.legalMoves[tile.id] || []; this.render(this.state); },
-  send(to) { if (!this.selected || !(this.state.legalMoves[this.selected.id] || []).includes(to)) return; PaiSocket.emit('game:move', { commandId: crypto.randomUUID(), kind: 'move', tileId: this.selected.id, to }); this.selected = null; this.targets = []; },
+  renderElements() {
+    const order = ['earth', 'fire', 'air', 'water'];
+    document.querySelector('#element-wheel').innerHTML = order.map((type, index) => `<div class="wheel-item type-${type} ${this.selected?.type === type ? 'active' : ''}" style="--i:${index}" title="${LABELS[type]}"><svg viewBox="-40 -40 80 80"><g>${Board.symbol(type)}</g></svg></div>`).join('') + '<span class="wheel-arrows">↻</span>';
+    const info = COMBAT[this.selected?.type];
+    document.querySelector('#combat-info').innerHTML = info ? `<b>${LABELS[this.selected.type]}</b><span>Перемагає: ${info.wins}</span><span>Програє: ${info.loses}</span><span>Нейтральна до: ${info.neutral}</span>` : 'Оберіть стихію, щоб побачити її силу';
+  },
+  renderPlayers() {
+    document.querySelector('#player-info').innerHTML = Object.values(this.state.players).map((player) => {
+      const own = player.id === this.me.id; const lotus = this.state.board.find((t) => t.owner === player.id && t.type === 'lotus'); const avatar = this.state.board.find((t) => t.owner === player.id && t.type === 'avatar');
+      const captures = this.state.captured[player.id]?.length || 0;
+      return `<article class="player-card ${this.state.activePlayer === player.id ? 'active' : ''}"><div class="player-emblem">${own ? '☯' : '◇'}</div><div><b>${UI.escape(player.name)} ${own ? '<small>ВИ</small>' : ''}</b><span>${player.side === 'host' ? 'Світла сторона' : 'Графітова сторона'} · <i class="${player.online ? 'online' : 'offline'}">${player.online ? 'онлайн' : 'офлайн'}</i></span><span>Захоплено: ${captures} · Аватар: ${avatar?.waiting ? 'повертається' : avatar?.position ? 'на дошці' : 'поза грою'}</span><span>Лотос: ${lotus?.lotusState === 'marked' ? '⚠ позначений' : lotus?.lotusState === 'dead' ? 'знищений' : 'безпечний'}</span></div></article>`;
+    }).join('');
+  },
+  inspectPiece(id) {
+    if (this.pending) return; const tile = this.state.board.find((piece) => piece.id === id); if (!tile) return;
+    if (tile.owner !== this.me.id) { const relation = COMBAT[tile.type]; UI.error(relation ? `${LABELS[tile.type]}. Її перемагає: ${relation.loses}.` : `${LABELS[tile.type]} суперника`); return; }
+    if (this.state.phase !== 'playing' || this.state.activePlayer !== this.me.id) return;
+    if (this.selected?.id === tile.id) { this.selected = null; this.targets = []; } else { this.selected = tile; this.targets = this.state.legalMoves[tile.id] || []; }
+    this.render(this.state);
+  },
+  boardCell() { if (this.selected && !this.pending) { UI.error('Ця клітина недоступна для вибраної фішки'); this.selected = null; this.targets = []; this.render(this.state); } },
+  send(to) {
+    if (this.pending || !this.selected || !(this.state.legalMoves[this.selected.id] || []).includes(to)) return;
+    this.pending = true; document.querySelector('#selection-help').textContent = 'Очікуємо підтвердження сервера…';
+    PaiSocket.emit('game:move', { commandId: crypto.randomUUID(), kind: 'move', tileId: this.selected.id, to });
+    this.selected = null; this.targets = [];
+  },
 };
-document.addEventListener('DOMContentLoaded', () => { document.querySelector('#resign').onclick = () => confirm('Справді здатися?') && PaiSocket.emit('game:resign', { commandId: crypto.randomUUID() }); document.querySelector('#rematch').onclick = () => PaiSocket.emit('game:rematch', { gameId: Game.state.id }); document.querySelector('#rules-open').onclick = () => document.querySelector('#rules').showModal(); Game.start(); });
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelector('#resign').onclick = () => confirm('Справді здатися?') && PaiSocket.emit('game:resign', { commandId: crypto.randomUUID() });
+  document.querySelector('#rematch').onclick = () => PaiSocket.emit('game:rematch', { gameId: Game.state.id });
+  document.querySelector('#rules-open').onclick = () => document.querySelector('#rules').showModal();
+  document.querySelector('.board-wrap').addEventListener('click', (event) => { if (event.target.closest('[data-piece],.move-target')) return; if (Game.selected) { Game.selected = null; Game.targets = []; Game.render(Game.state); } });
+  Game.start();
+});
