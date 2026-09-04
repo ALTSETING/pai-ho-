@@ -1,18 +1,30 @@
 'use strict';
 
 window.Board = {
-  cells: [], scale: 39, DEBUG_BOARD_CELLS: false,
+  cells: [], DEBUG_BOARD: false,
+  BOARD_CENTER: { x: 500, y: 500 },
+  PLAYABLE_BOUNDS: { minX: 100, maxX: 900, minY: 70, maxY: 930 },
+  CELL_WIDTH: 68, CELL_HEIGHT: 50, ROW_STEP_Y: 50, COLUMN_STEP_X: 68,
   init() {
-    for (let row = -7; row <= 7; row += 1) for (let column = -7; column <= 7; column += 1) {
-      if (column * column + row * row > 50) continue;
-      const centerX = 500 + (column - row) * this.scale;
-      const centerY = 500 + (column + row) * this.scale / 2;
-      this.cells.push({ id: `${column},${row}`, row, column, centerX, centerY, polygonPoints: [[centerX, centerY - this.scale / 2], [centerX + this.scale, centerY], [centerX, centerY + this.scale / 2], [centerX - this.scale, centerY]], portal: Math.abs(column) <= 1 && Math.abs(row) <= 1 });
+    for (let row = -8; row <= 8; row += 1) for (let column = -6; column <= 6; column += 1) {
+      const centerX = 500 + column * this.COLUMN_STEP_X + (Math.abs(row) % 2 ? this.CELL_WIDTH / 2 : 0);
+      const centerY = 500 + row * this.ROW_STEP_Y + (row < 0 ? -15 : row > 0 ? 15 : 0);
+      const halfWidth = this.CELL_WIDTH / 2; const halfHeight = this.CELL_HEIGHT / 2;
+      if (centerX - halfWidth < this.PLAYABLE_BOUNDS.minX || centerX + halfWidth > this.PLAYABLE_BOUNDS.maxX) continue;
+      this.cells.push({ id: `${column},${row}`, row, column, centerX, centerY, polygonPoints: [[centerX, centerY - halfHeight], [centerX + halfWidth, centerY], [centerX, centerY + halfHeight], [centerX - halfWidth, centerY]], portal: Math.abs(column) <= 1 && Math.abs(row) <= 1 });
     }
   },
   cell(id) { return this.cells.find((cell) => cell.id === id); },
   point(cell) { return { x: cell.centerX, y: cell.centerY }; },
   polygon(cell) { return cell.polygonPoints.map((point) => point.join(',')).join(' '); },
+  pointInPolygon(point, polygon) {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const [xi, yi] = polygon[i]; const [xj, yj] = polygon[j];
+      if ((yi > point.y) !== (yj > point.y) && point.x < ((xj - xi) * (point.y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  },
   symbol(type) {
     return {
       fire: '<path class="glyph-back" d="M0 28C-25 15-23-8-5-31c-2 18 11 17 10 4 21 17 26 42 10 55-2-12-7-20-13-25 2 12-8 17-2 25Z"/><path d="M1 22c-10-8-9-18 1-30 0 9 10 11 7 21"/>',
@@ -25,7 +37,7 @@ window.Board = {
   },
   tile(tile, selected = false) {
     const side = Game.state?.players[tile.owner]?.side === 'host' ? 'one' : 'two';
-    return `<g class="svg-tile type-${tile.type} side-${side} ${selected ? 'selected' : ''} ${tile.lotusState === 'marked' ? 'marked' : ''}" data-piece="${tile.id}" tabindex="0" role="button" aria-label="${Game.label(tile.type)}"><title>${Game.label(tile.type)}</title><circle class="piece-shadow" cy="5" r="31"/><circle class="player-frame" r="32"/><circle class="piece-rim" r="29"/><circle class="piece-ceramic" r="24"/><circle class="decorative-ring" r="21"/><circle class="piece-inlay" r="18"/><g class="glyph">${this.symbol(tile.type)}</g><ellipse class="shine" cx="-7" cy="-10" rx="11" ry="5"/></g>`;
+    return `<g class="svg-tile type-${tile.type} side-${side} ${selected ? 'selected' : ''} ${tile.lotusState === 'marked' ? 'marked' : ''}" data-piece="${tile.id}" tabindex="0" role="button" aria-label="${Game.label(tile.type)}"><title>${Game.label(tile.type)}</title><circle class="selection-ring" r="24"/><circle class="piece-shadow" cy="3" r="20"/><circle class="player-frame" r="20"/><circle class="piece-rim" r="18"/><circle class="piece-ceramic" r="15.5"/><circle class="decorative-ring" r="13.5"/><circle class="piece-inlay" r="11.5"/><g class="glyph">${this.symbol(tile.type)}</g><ellipse class="shine" cx="-5" cy="-7" rx="7" ry="3"/>${this.DEBUG_BOARD ? '<circle class="piece-bound" r="20"/>' : ''}</g>`;
   },
   targetKind(game, selected, position) {
     if (!selected) return 'move';
@@ -46,9 +58,9 @@ window.Board = {
     const board = document.querySelector('#pai-sho-board');
     if (board.querySelector('#board-background')) return board;
     const grid = this.cells.map((cell) => `<polygon points="${this.polygon(cell)}"/>`).join('');
-    const debug = this.DEBUG_BOARD_CELLS ? this.cells.map((cell) => `<g class="cell-debug"><circle cx="${cell.centerX}" cy="${cell.centerY}" r="4"/><text x="${cell.centerX}" y="${cell.centerY - 8}">${cell.row}/${cell.column}\n${cell.id}</text></g>`).join('') : '';
+    const debug = this.DEBUG_BOARD ? this.cells.map((cell) => `<g class="cell-debug"><circle cx="${cell.centerX}" cy="${cell.centerY}" r="2.5"/><text x="${cell.centerX}" y="${cell.centerY - 8}">${cell.id}</text></g>`).join('') : '';
     const hitAreas = this.cells.map((cell) => `<polygon class="cell-hit" data-point="${cell.id}" points="${this.polygon(cell)}"/>`).join('');
-    board.innerHTML = `${this.defs()}<g id="board-background"><circle class="outer-shadow" cx="500" cy="500" r="480"/><circle class="outer-rim" cx="500" cy="500" r="468"/><circle class="inner-rim" cx="500" cy="500" r="458"/><circle class="wood" cx="500" cy="500" r="455"/></g><g id="board-zones" clip-path="url(#boardClip)"><rect class="light-zone" x="45" y="45" width="910" height="910"/><path class="red-zone" d="M45 45H955L500 500ZM45 955H955L500 500Z"/><circle class="portal" cx="500" cy="500" r="75"/><circle class="portal-core" cx="500" cy="500" r="23"/></g><g id="board-grid" class="cell-grid" clip-path="url(#boardClip)">${grid}${debug}</g><g id="move-highlights" clip-path="url(#boardClip)"></g><g id="pieces"></g><g id="effects"></g><g id="cell-hit-areas" clip-path="url(#boardClip)">${hitAreas}</g>`;
+    board.innerHTML = `${this.defs()}<g id="board-background"><circle class="outer-shadow" cx="500" cy="500" r="480"/><circle class="outer-rim" cx="500" cy="500" r="468"/><circle class="inner-rim" cx="500" cy="500" r="458"/><circle class="wood" cx="500" cy="500" r="455"/></g><g id="board-zones" clip-path="url(#boardClip)"><rect class="light-zone" x="45" y="45" width="910" height="910"/><path class="wood-start" d="M120 70H880L805 205H195ZM120 930H880L805 795H195Z"/><path class="red-zone" d="M185 205H815L635 405H365ZM365 595H635L815 795H185Z"/><path class="red-hourglass" d="M365 405H635L550 500 635 595H365L450 500Z"/><circle class="portal" cx="500" cy="500" r="68"/><circle class="portal-core" cx="500" cy="500" r="23"/></g><g id="board-grid" class="cell-grid" clip-path="url(#boardClip)">${grid}${debug}</g><g id="move-highlights" clip-path="url(#boardClip)"></g><g id="pieces"></g><g id="effects"></g><g id="cell-hit-areas" clip-path="url(#boardClip)">${hitAreas}</g>`;
     board.querySelectorAll('.cell-hit').forEach((node) => { node.onclick = (event) => { event.stopPropagation(); const targets = Board.currentTargets || []; if (targets.includes(node.dataset.point)) Game.send(node.dataset.point); else Game.boardCell(node.dataset.point); }; });
     return board;
   },
@@ -58,17 +70,34 @@ window.Board = {
     board.querySelector('#move-highlights').innerHTML = highlights;
     board.querySelectorAll('.cell-hit').forEach((node) => node.classList.toggle('target', targets.includes(node.dataset.point)));
     const layer = board.querySelector('#pieces'); const visible = game.board.filter((tile) => tile.position); const authoritativeIds = new Set(visible.map((tile) => tile.id));
+    if (game.version === 0 && visible.length === 28) this.assertInitialState(game);
     layer.querySelectorAll('.piece').forEach((node) => { if (!authoritativeIds.has(node.dataset.pieceId)) node.remove(); });
     visible.forEach((tile) => {
       const cell = this.cell(tile.position); if (!cell) return;
       let node = [...layer.children].find((candidate) => candidate.dataset.pieceId === tile.id); const isNew = !node;
       if (isNew) { node = document.createElementNS('http://www.w3.org/2000/svg', 'g'); node.classList.add('piece'); node.dataset.pieceId = tile.id; node.innerHTML = this.tile(tile, selected?.id === tile.id); layer.append(node); }
       const inner = node.querySelector('.svg-tile'); inner.classList.toggle('selected', selected?.id === tile.id); inner.classList.toggle('marked', tile.lotusState === 'marked');
-      node.style.transitionDuration = animate && !isNew ? '420ms' : '0ms'; node.setAttribute('transform', `translate(${cell.centerX} ${cell.centerY})`); node.style.transform = `translate(${cell.centerX}px, ${cell.centerY}px)`;
+      node.style.transitionDuration = animate && !isNew ? '440ms' : '0ms'; node.setAttribute('transform', `translate(${cell.centerX} ${cell.centerY})`); node.style.transform = `translate(${cell.centerX}px, ${cell.centerY}px)`;
     });
     const renderedPieceIds = [...layer.querySelectorAll('.piece')].map((node) => node.dataset.pieceId);
     console.assert(renderedPieceIds.length === new Set(renderedPieceIds).size, 'Duplicate pieceId in board DOM', renderedPieceIds);
     board.querySelectorAll('[data-piece]').forEach((node) => { node.onclick = (event) => { event.stopPropagation(); Game.inspectPiece(node.dataset.piece); }; node.onkeydown = (event) => { if (event.key === 'Enter' || event.key === ' ') node.onclick(event); }; });
+  },
+  assertInitialState(game) {
+    const pieces = game.board.map((tile) => ({ tile, cell: this.cell(tile.cellId || tile.position) }));
+    console.assert(new Set(game.board.map(({ id }) => id)).size === 28, 'Initial piece IDs must be unique');
+    console.assert(new Set(pieces.map(({ cell }) => cell?.id)).size === 28, 'Initial cells must be unique');
+    pieces.forEach(({ tile, cell }) => {
+      console.assert(cell && tile.position === cell.id, 'Piece must resolve through its cellId', tile.id);
+      console.assert(cell && this.pointInPolygon({ x: cell.centerX, y: cell.centerY }, cell.polygonPoints), 'Piece center must be inside its cell', tile.id);
+      console.assert(cell && cell.centerX >= 120 && cell.centerX <= 880 && cell.centerY >= 85 && cell.centerY <= 915, 'Piece must remain on board', tile.id);
+    });
+    for (let i = 0; i < pieces.length; i += 1) for (let j = i + 1; j < pieces.length; j += 1) {
+      const a = pieces[i].cell; const b = pieces[j].cell; const distance = Math.hypot(a.centerX - b.centerX, a.centerY - b.centerY);
+      console.assert(distance >= 47, 'Initial pieces must have a 7-unit edge gap', pieces[i].tile.id, pieces[j].tile.id);
+    }
+    const bySide = (side) => pieces.filter(({ tile }) => game.players[tile.owner]?.side === side).map(({ cell }) => cell.centerY);
+    console.assert(Math.max(...bySide('host')) <= 350 && Math.min(...bySide('guest')) >= 650, 'Formations must leave the center clear');
   },
 };
 Board.init();

@@ -5,12 +5,12 @@ const { TILE_TYPES, ELEMENTS, TILE_COUNTS, getCombatResult } = require('./tiles'
 
 class RuleError extends Error {}
 const TOP_FORMATION = Object.freeze([
-  ['lotus', '0,-6'],
-  ['air', '-1,-5'], ['earth', '1,-5'],
-  ['water', '-2,-4'], ['fire', '2,-4'],
-  ['earth', '-1,-3'], ['air', '1,-3'],
-  ['water', '-4,-2'], ['fire', '-2,-2'], ['avatar', '0,-2'], ['water', '2,-2'], ['fire', '4,-2'],
-  ['air', '-1,-1'], ['earth', '1,-1'],
+  ['lotus', '0,-8'],
+  ['air', '-1,-7'], ['earth', '0,-7'],
+  ['water', '-1,-6'], ['fire', '1,-6'],
+  ['earth', '-1,-5'], ['air', '0,-5'],
+  ['water', '-2,-4'], ['fire', '-1,-4'], ['avatar', '0,-4'], ['water', '1,-4'], ['fire', '2,-4'],
+  ['air', '-1,-3'], ['earth', '0,-3'],
 ]);
 const INITIAL_POSITIONS = Object.freeze({
   host: TOP_FORMATION.map(([type, position]) => Object.freeze({ type, position })),
@@ -25,7 +25,8 @@ function createPieces(owner, side) {
   const counters = {};
   return INITIAL_POSITIONS[side].map(({ type, position }) => {
     counters[type] = (counters[type] || 0) + 1;
-    return { id: `${owner}-${type}-${counters[type]}`, owner, type, position, startPosition: position, lotusState: type === 'lotus' ? 'safe' : undefined, waiting: false };
+    const cell = cellMap.get(position);
+    return { id: `${owner}-${type}-${counters[type]}`, owner, type, position, cellId: position, row: cell.row, column: cell.column, startPosition: position, lotusState: type === 'lotus' ? 'safe' : undefined, waiting: false };
   });
 }
 
@@ -65,12 +66,15 @@ function legalMovesForActivePlayer(state) {
 
 function finish(next, winnerId, reason) { next.phase = 'finished'; next.result = { winnerId, reason }; return next; }
 function capture(next, tile, captor) {
-  tile.position = null; tile.waiting = false;
+  tile.position = null; tile.cellId = null; tile.row = null; tile.column = null; tile.waiting = false;
   if (tile.type === 'lotus') tile.lotusState = 'dead';
   next.captured[captor].push(tile.type);
 }
 function restoreWaitingAvatars(next) {
-  for (const avatar of next.board.filter((tile) => tile.type === 'avatar' && tile.waiting)) if (!tileAt(next, avatar.startPosition)) { avatar.position = avatar.startPosition; avatar.waiting = false; }
+  for (const avatar of next.board.filter((tile) => tile.type === 'avatar' && tile.waiting)) if (!tileAt(next, avatar.startPosition)) {
+    const cell = cellMap.get(avatar.startPosition);
+    avatar.position = avatar.startPosition; avatar.cellId = avatar.startPosition; avatar.row = cell.row; avatar.column = cell.column; avatar.waiting = false;
+  }
 }
 function portalWinner(next) {
   for (const lotus of next.board.filter((tile) => tile.type === 'lotus' && tile.position === '0,0' && tile.lotusState === 'safe')) {
@@ -95,7 +99,8 @@ function applyMove(state, player, move) {
   const tile = next.board.find((candidate) => candidate.id === move.tileId);
   if (!tile || tile.owner !== player) throw new RuleError('Ця фішка вам не належить');
   if (!move.to || !legalTargets(next, tile.id).includes(move.to)) throw new RuleError('Недозволений хід');
-  const from = tile.position; tile.position = move.to;
+  const from = tile.position; tile.position = move.to; tile.cellId = move.to;
+  ({ row: tile.row, column: tile.column } = cellMap.get(move.to));
 
   if (tile.type === 'avatar') {
     for (const enemy of enemyAdjacent(next, tile)) {
@@ -105,7 +110,7 @@ function applyMove(state, player, move) {
   } else if (ELEMENTS.includes(tile.type)) {
     for (const enemy of enemyAdjacent(next, tile)) {
       if (!tile.position) break;
-      if (enemy.type === 'avatar') { enemy.position = null; enemy.waiting = true; }
+      if (enemy.type === 'avatar') { enemy.position = null; enemy.cellId = null; enemy.row = null; enemy.column = null; enemy.waiting = true; }
       else if (ELEMENTS.includes(enemy.type)) {
         const result = getCombatResult(tile.type, enemy.type);
         if (result === 'win') capture(next, enemy, player);
