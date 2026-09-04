@@ -3,6 +3,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const E = require('../src/game-engine');
+const MoveRules = require('../../frontend/move-rules');
+const { moveSchema } = require('../src/validation');
 
 const players = { one: { id: 'one', name: 'Tea', side: 'host' }, two: { id: 'two', name: 'Stone', side: 'guest' } };
 const command = (tileId, to) => ({ commandId: crypto.randomUUID(), kind: 'move', tileId, to });
@@ -71,13 +73,52 @@ test('illegal distant, occupied, off-board and foreign movement is rejected', ()
 test('out-of-turn movement is rejected', () => assert.throws(() => E.applyMove(game(), 'two', command('two-water-1', '1,3')), E.RuleError));
 test('friendly jumps and chains work, enemy jumps and Lotus jumps do not', () => { const g = sparse([['one', 'water', '-2,0'], ['one', 'earth', '-1,0'], ['one', 'fire', '1,0'], ['one', 'lotus', '0,2'], ['two', 'air', '0,1']]); assert.ok(E.legalTargets(g, 'one-water-1').includes('2,0')); assert.ok(!E.legalTargets(g, 'one-lotus-1').includes('0,0')); });
 
+test('own pieces can be selected, opponents cannot, and a marked Lotus is mandatory', () => {
+  const g = game(); const own = piece(g, 'one', 'water'); const enemy = piece(g, 'two', 'water');
+  assert.equal(MoveRules.canSelectPiece(g, 'one', own), true);
+  assert.equal(MoveRules.canSelectPiece(g, 'one', enemy), false);
+  piece(g, 'one', 'lotus').lotusState = 'marked';
+  assert.equal(MoveRules.canSelectPiece(g, 'one', own), false);
+  assert.equal(MoveRules.canSelectPiece(g, 'one', piece(g, 'one', 'lotus')), true);
+  assert.equal(MoveRules.canSelectPiece(g, 'one', piece(g, 'one', 'lotus'), true), false);
+});
+test('a centre cell has exactly four side-sharing neighbours and no diagonal neighbour', () => {
+  assert.deepEqual(new Set(E.getAdjacentCells('0,0')), new Set(['-1,0', '1,0', '0,-1', '0,1']));
+  assert.throws(() => E.validateMoveRoute(sparse([['one', 'water', '0,0']]), 'one', 'one-water-1', ['1,1']), /Недозволений маршрут/);
+});
+test('route validation supports one jump and a chain without revisiting cells', () => {
+  const g = sparse([['one', 'water', '-2,0'], ['one', 'earth', '-1,0'], ['one', 'fire', '1,0']]);
+  assert.equal(E.validateMoveRoute(g, 'one', 'one-water-1', ['0,0']).kind, 'jump');
+  assert.deepEqual(E.validateMoveRoute(g, 'one', 'one-water-1', ['0,0', '2,0']).path, ['0,0', '2,0']);
+  assert.throws(() => E.validateMoveRoute(g, 'one', 'one-water-1', ['0,0', '-2,0']), /Недозволений маршрут/);
+});
+test('routes cannot jump over an enemy and Lotus cannot jump', () => {
+  const enemy = sparse([['one', 'water', '-2,0'], ['two', 'earth', '-1,0']]);
+  assert.throws(() => E.validateMoveRoute(enemy, 'one', 'one-water-1', ['0,0']), /Недозволений маршрут/);
+  const lotus = sparse([['one', 'lotus', '-2,0'], ['one', 'earth', '-1,0']]);
+  assert.throws(() => E.validateMoveRoute(lotus, 'one', 'one-lotus-1', ['0,0']), /Недозволений маршрут/);
+});
+test('socket move contract requires game, turn, piece and complete path', () => {
+  const g = game(); const payload = { commandId: crypto.randomUUID(), kind: 'move', gameId: g.id, expectedTurnNumber: g.turn, pieceId: 'one-water-1', path: ['0,-2'] };
+  assert.equal(moveSchema.safeParse(payload).success, true);
+  assert.equal(moveSchema.safeParse({ ...payload, path: undefined }).success, false);
+  assert.equal(moveSchema.safeParse({ ...payload, expectedTurnNumber: undefined }).success, false);
+});
+test('duplicate commands are idempotent and stale turns are rejected', () => {
+  const g = sparse([['one', 'water', '0,0']]);
+  const move = { commandId: crypto.randomUUID(), kind: 'move', gameId: g.id, expectedTurnNumber: 1, pieceId: 'one-water-1', path: ['1,0'] };
+  const next = E.applyMove(g, 'one', move);
+  assert.equal(E.applyMove(next, 'one', move), next);
+  assert.throws(() => E.applyMove(next, 'two', { ...move, commandId: crypto.randomUUID(), pieceId: 'two-water-1' }), /Стан гри вже змінився/);
+});
+
 for (const [attacker, defender] of [['earth', 'fire'], ['fire', 'air'], ['air', 'water'], ['water', 'earth']]) test(`${attacker} defeats ${defender}`, () => { assert.equal(E.getCombatResult(attacker, defender), 'win'); const g = sparse([['one', attacker, '0,0'], ['two', defender, '2,0']]); const n = E.applyMove(g, 'one', command(`one-${attacker}-1`, '1,0')); assert.equal(piece(n, 'two', defender).position, null); });
 test('losing attacker is removed', () => { const g = sparse([['one', 'fire', '0,0'], ['two', 'earth', '2,0']]); const n = E.applyMove(g, 'one', command('one-fire-1', '1,0')); assert.equal(piece(n, 'one', 'fire').position, null); });
 test('neutral Earth/Air and Fire/Water pairs remain', () => { for (const [a, b] of [['earth', 'air'], ['fire', 'water']]) { assert.equal(E.getCombatResult(a, b), 'neutral'); const n = E.applyMove(sparse([['one', a, '0,0'], ['two', b, '2,0']]), 'one', command(`one-${a}-1`, '1,0')); assert.ok(piece(n, 'one', a).position); assert.ok(piece(n, 'two', b).position); } });
 test('Avatar attacks and removes an ordinary enemy', () => { const n = E.applyMove(sparse([['one', 'avatar', '0,0'], ['two', 'water', '2,0']]), 'one', command('one-avatar-1', '1,0')); assert.equal(piece(n, 'two', 'water').position, null); });
 test('ordinary piece attacks Avatar and Avatar returns to its start', () => { const g = sparse([['one', 'water', '0,0'], ['two', 'avatar', '2,0']]); piece(g, 'two', 'avatar').startPosition = '0,4'; const n = E.applyMove(g, 'one', command('one-water-1', '1,0')); assert.equal(piece(n, 'two', 'avatar').position, '0,4'); });
-test('Avatar waits when its return cell is blocked and returns after it clears', () => { const g = sparse([['one', 'water', '0,0'], ['two', 'avatar', '2,0'], ['two', 'earth', '0,4']]); piece(g, 'two', 'avatar').startPosition = '0,4'; let n = E.applyMove(g, 'one', command('one-water-1', '1,0')); assert.equal(piece(n, 'two', 'avatar').waiting, true); n = E.applyMove(n, 'two', command('two-earth-1', '1,4')); assert.equal(piece(n, 'two', 'avatar').position, '0,4'); assert.equal(piece(n, 'two', 'avatar').waiting, false); });
-test('Lotus beside an enemy Avatar becomes marked and must move', () => { let g = sparse([['one', 'avatar', '0,0'], ['two', 'lotus', '2,0'], ['two', 'water', '2,2']]); g = E.applyMove(g, 'one', command('one-avatar-1', '1,0')); assert.equal(piece(g, 'two', 'lotus').lotusState, 'marked'); assert.throws(() => E.applyMove(g, 'two', command('two-water-1', '1,2')), /Лотос позначений/); });
+test('Avatar waits when its return cell is blocked and returns after it clears', () => { const g = sparse([['one', 'water', '0,0'], ['two', 'avatar', '2,0'], ['two', 'earth', '0,4']]); piece(g, 'two', 'avatar').startPosition = '0,4'; let n = E.applyMove(g, 'one', command('one-water-1', '1,0')); assert.equal(piece(n, 'two', 'avatar').waiting, true); assert.equal(piece(n, 'two', 'avatar').avatarRespawnPending, true); n = E.applyMove(n, 'two', command('two-earth-1', '1,4')); assert.equal(piece(n, 'two', 'avatar').position, '0,4'); assert.equal(piece(n, 'two', 'avatar').waiting, false); assert.equal(piece(n, 'two', 'avatar').avatarRespawnPending, false); });
+test('Lotus beside an enemy Avatar becomes marked and must move', () => { let g = sparse([['one', 'avatar', '0,0'], ['two', 'lotus', '2,0'], ['two', 'water', '2,2']]); g = E.applyMove(g, 'one', command('one-avatar-1', '1,0')); assert.equal(piece(g, 'two', 'lotus').lotusState, 'marked'); assert.throws(() => E.applyMove(g, 'two', command('two-water-1', '1,2')), /Лотос повинен бути переміщений/); });
 test('marked Lotus can escape and becomes safe', () => { let g = sparse([['one', 'avatar', '1,0'], ['two', 'lotus', '2,0']], 'two'); piece(g, 'two', 'lotus').lotusState = 'marked'; g = E.applyMove(g, 'two', command('two-lotus-1', '2,1')); assert.equal(piece(g, 'two', 'lotus').lotusState, 'safe'); });
 test('trapped marked Lotus dies and awards victory', () => { const g = sparse([['one', 'avatar', '1,0'], ['two', 'lotus', '0,0'], ['two', 'water', '-1,0'], ['two', 'earth', '0,1'], ['two', 'fire', '0,-1']], 'two'); piece(g, 'two', 'lotus').lotusState = 'marked'; const n = E.applyMove(g, 'two', command('two-lotus-1', '-1,0')); assert.equal(piece(n, 'two', 'lotus').lotusState, 'dead'); assert.deepEqual(n.result, { winnerId: 'one', reason: 'lotus_dead' }); });
 test('safe Lotus reaching empty center wins immediately', () => { const n = E.applyMove(sparse([['one', 'lotus', '0,-1']]), 'one', command('one-lotus-1', '0,0')); assert.deepEqual(n.result, { winnerId: 'one', reason: 'lotus_reached_center' }); });
