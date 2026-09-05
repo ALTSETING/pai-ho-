@@ -40,13 +40,14 @@ for (let row = -RADIUS; row <= RADIUS; row += 1) {
   }
 }
 const cellMap = new Map(cells.map((cell) => [cell.id, cell]));
-// Combat only uses side-sharing neighbours. Movement and jumps additionally
-// reach cells that share a diamond vertex, so keep these rule sets separate.
-const COMBAT_DIRECTIONS = Object.freeze([[1, 0], [-1, 0], [0, 1], [0, -1]]);
+// Movement, jumps, and post-move combat all use the eight logical neighbours
+// of this diagonal lattice. Keeping one canonical list prevents client-facing
+// movement and authoritative combat rules from drifting apart.
 const STEP_DIRECTIONS = Object.freeze([
-  ...COMBAT_DIRECTIONS,
+  [1, 0], [-1, 0], [0, 1], [0, -1],
   [1, 1], [1, -1], [-1, 1], [-1, -1],
 ]);
+const COMBAT_DIRECTIONS = STEP_DIRECTIONS;
 const JUMP_DIRECTIONS = STEP_DIRECTIONS;
 
 function idsInDirections(id, directions) {
