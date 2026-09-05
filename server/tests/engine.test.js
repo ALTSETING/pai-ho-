@@ -76,7 +76,7 @@ test('every piece type can step to all eight free neighbours in the board center
 });
 test('ordinary steps exclude occupied and off-board cells', () => {
   const center = sparse([['one', 'water', '0,0'], ['one', 'earth', '1,1'], ['two', 'fire', '-1,-1']]);
-  assert.deepEqual(new Set(E.legalTargets(center, 'one-water-1')), new Set(['1,0', '-1,0', '0,1', '0,-1', '1,-1', '-1,1']));
+  assert.deepEqual(new Set(E.legalTargets(center, 'one-water-1')), new Set(['1,0', '-1,0', '0,1', '0,-1', '1,-1', '-1,1', '2,2']));
   const edge = sparse([['one', 'water', '0,-9']]);
   assert.deepEqual(new Set(E.legalTargets(edge, 'one-water-1')), new Set(E.stepIds('0,-9')));
   assert.ok(E.stepIds('0,-9').length < 8);
@@ -93,6 +93,55 @@ test('both players receive and can use all eight step directions in canonical co
 test('illegal distant, occupied, off-board and foreign movement is rejected', () => { const g = sparse([['one', 'water', '0,0'], ['one', 'earth', '1,0'], ['two', 'fire', '2,0']]); for (const move of [command('one-water-1', '0,2'), command('one-water-1', '1,0'), command('one-water-1', '5,0'), command('two-fire-1', '2,1')]) assert.throws(() => E.applyMove(g, 'one', move), E.RuleError); });
 test('out-of-turn movement is rejected', () => assert.throws(() => E.applyMove(game(), 'two', command('two-water-1', '1,3')), E.RuleError));
 test('friendly jumps and chains work, enemy jumps and Lotus jumps do not', () => { const g = sparse([['one', 'water', '-2,0'], ['one', 'earth', '-1,0'], ['one', 'fire', '1,0'], ['one', 'lotus', '0,2'], ['two', 'air', '0,1']]); assert.ok(E.legalTargets(g, 'one-water-1').includes('2,0')); assert.ok(!E.legalTargets(g, 'one-lotus-1').includes('0,0')); });
+
+test('jumps work in all eight logical directions for both players', () => {
+  const directions = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+  for (const owner of ['one', 'two']) for (const [dx, dy] of directions) {
+    const g = sparse([[owner, 'water', '0,0'], [owner, 'earth', `${dx},${dy}`]], owner);
+    const target = `${2 * dx},${2 * dy}`;
+    assert.ok(E.legalTargets(g, `${owner}-water-1`).includes(target), `${owner}: ${dx},${dy}`);
+    const moved = E.applyMove(g, owner, command(`${owner}-water-1`, target));
+    assert.equal(piece(moved, owner, 'water').position, target);
+    assert.deepEqual(moved.lastMove.route, ['0,0', target]);
+  }
+});
+
+test('a jump chain may change direction and is recorded as one move', () => {
+  const g = sparse([['one', 'water', '0,0'], ['one', 'earth', '1,0'], ['one', 'fire', '2,1']]);
+  assert.ok(E.legalTargets(g, 'one-water-1').includes('2,2'));
+  const moved = E.applyMove(g, 'one', command('one-water-1', '2,2'));
+  assert.deepEqual(moved.lastMove.route, ['0,0', '2,0', '2,2']);
+  assert.equal(moved.moves.length, 1);
+  assert.equal(moved.turn, 2);
+});
+
+test('jumps cannot land on occupied or off-board cells', () => {
+  const occupied = sparse([['one', 'water', '0,0'], ['one', 'earth', '1,1'], ['one', 'fire', '2,2']]);
+  assert.ok(!E.legalTargets(occupied, 'one-water-1').includes('2,2'));
+  assert.throws(() => E.applyMove(occupied, 'one', command('one-water-1', '2,2')), E.RuleError);
+  const edge = sparse([['one', 'water', '0,-8'], ['one', 'earth', '0,-9']]);
+  assert.ok(!E.legalTargets(edge, 'one-water-1').includes('0,-10'));
+  assert.throws(() => E.applyMove(edge, 'one', command('one-water-1', '0,-10')), E.RuleError);
+});
+
+test('jump routes never revisit a cell or return to their vacated origin', () => {
+  const g = sparse([['one', 'water', '0,0'], ['one', 'earth', '1,0'], ['one', 'fire', '2,1'], ['one', 'air', '1,2']]);
+  const moved = E.applyMove(g, 'one', command('one-water-1', '0,2'));
+  assert.deepEqual(moved.lastMove.route, ['0,0', '2,0', '2,2', '0,2']);
+  assert.equal(new Set(moved.lastMove.route).size, moved.lastMove.route.length);
+  assert.ok(!E.legalTargets(g, 'one-water-1').filter((target) => target === '0,0').length);
+});
+
+test('both client perspectives receive the same chained-jump endpoint and route', () => {
+  for (const owner of ['one', 'two']) {
+    const g = sparse([[owner, 'water', '0,0'], [owner, 'earth', '1,0'], [owner, 'fire', '2,1']], owner);
+    const state = E.applyMove(g, owner, command(`${owner}-water-1`, '2,2'));
+    const clients = [structuredClone(state), structuredClone(state)];
+    assert.equal(piece(clients[0], owner, 'water').position, '2,2');
+    assert.deepEqual(clients[0].lastMove.route, ['0,0', '2,0', '2,2']);
+    assert.deepEqual(clients[0], clients[1]);
+  }
+});
 
 for (const [attacker, defender] of [['earth', 'fire'], ['fire', 'air'], ['air', 'water'], ['water', 'earth']]) test(`${attacker} defeats ${defender}`, () => { assert.equal(E.getCombatResult(attacker, defender), 'win'); const g = sparse([['one', attacker, '0,0'], ['two', defender, '2,0']]); const n = E.applyMove(g, 'one', command(`one-${attacker}-1`, '1,0')); assert.equal(piece(n, 'two', defender).position, null); });
 test('losing attacker is removed', () => { const g = sparse([['one', 'fire', '0,0'], ['two', 'earth', '2,0']]); const n = E.applyMove(g, 'one', command('one-fire-1', '1,0')); assert.equal(piece(n, 'one', 'fire').position, null); });

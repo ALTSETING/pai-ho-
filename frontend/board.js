@@ -106,7 +106,7 @@ window.Board = {
       const route = animate && game.lastMove?.tileId === tile.id && game.version !== Number(node.dataset.animatedVersion) ? game.lastMove.route : null;
       if (route?.length > 2 && node.animate) {
         node.style.transitionDuration = '0ms';
-        node.animate(route.map((id) => { const p = this.point(this.cell(id)); return { transform: `translate(${p.x}px, ${p.y}px)` }; }), { duration: 400, easing: 'cubic-bezier(.22,1,.36,1)' });
+        node.animate(route.map((id, index) => { const p = this.point(this.cell(id)); return { transform: `translate(${p.x}px, ${p.y}px)`, offset: index / (route.length - 1) }; }), { duration: 300 * (route.length - 1), easing: 'ease-in-out' });
         node.dataset.animatedVersion = game.version;
       } else if (previousPoint && previousPoint.x === point.x && previousPoint.y === point.y) node.style.transitionDuration = '0ms';
       node.style.transform = `translate(${point.x}px, ${point.y}px)`; node.dataset.x = point.x; node.dataset.y = point.y;

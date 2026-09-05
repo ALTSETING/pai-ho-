@@ -40,13 +40,14 @@ for (let row = -RADIUS; row <= RADIUS; row += 1) {
   }
 }
 const cellMap = new Map(cells.map((cell) => [cell.id, cell]));
-// Combat and jumps use side-sharing neighbours. Ordinary steps additionally
+// Combat only uses side-sharing neighbours. Movement and jumps additionally
 // reach cells that share a diamond vertex, so keep these rule sets separate.
 const COMBAT_DIRECTIONS = Object.freeze([[1, 0], [-1, 0], [0, 1], [0, -1]]);
 const STEP_DIRECTIONS = Object.freeze([
   ...COMBAT_DIRECTIONS,
   [1, 1], [1, -1], [-1, 1], [-1, -1],
 ]);
+const JUMP_DIRECTIONS = STEP_DIRECTIONS;
 
 function idsInDirections(id, directions) {
   const cell = cellMap.get(id);
@@ -68,4 +69,4 @@ function rotateCell180(cell) {
   return cellMap.get(`${-source.column},${-source.row}`) || null;
 }
 
-module.exports = { BOARD_CENTER, PLAYABLE_RADIUS, GRID_STEP, HALF_STEP, RADIUS, cells, cellMap, screenCenter, adjacentIds, stepIds, rotateCell180, COMBAT_DIRECTIONS, STEP_DIRECTIONS };
+module.exports = { BOARD_CENTER, PLAYABLE_RADIUS, GRID_STEP, HALF_STEP, RADIUS, cells, cellMap, screenCenter, adjacentIds, stepIds, rotateCell180, COMBAT_DIRECTIONS, STEP_DIRECTIONS, JUMP_DIRECTIONS };
