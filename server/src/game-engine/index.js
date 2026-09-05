@@ -76,6 +76,9 @@ function legalMovesForActivePlayer(state) {
 
 function finish(next, winnerId, reason) { next.phase = 'finished'; next.result = { winnerId, reason }; return next; }
 function capture(next, tile, captor) {
+  const position = tile.position;
+  next._destructionEvents ||= [];
+  next._destructionEvents.push({ pieceId: tile.id, owner: tile.owner, type: tile.type, position });
   tile.position = null; tile.cellId = null; tile.row = null; tile.column = null; tile.waiting = false;
   if (tile.type === 'lotus') tile.lotusState = 'dead';
   next.captured[captor].push(tile.type);
@@ -104,7 +107,12 @@ function applyMove(state, player, move) {
     next.version += 1; next.updatedAt = new Date().toISOString(); return finish(next, other(next, player), 'resignation');
   }
   const markedLotus = next.board.find((tile) => tile.owner === player && tile.type === 'lotus' && tile.lotusState === 'marked');
-  if (markedLotus && !legalTargets(next, markedLotus.id).length) { capture(next, markedLotus, other(next, player)); return finish(next, other(next, player), 'lotus_dead'); }
+  if (markedLotus && !legalTargets(next, markedLotus.id).length) {
+    capture(next, markedLotus, other(next, player));
+    next.lastMove = { moveId: move.commandId || `turn-${next.turn}`, tileId: null, type: null, from: null, to: null, route: [], player, destructionEvents: next._destructionEvents };
+    delete next._destructionEvents; next.version += 1; next.updatedAt = new Date().toISOString();
+    return finish(next, other(next, player), 'lotus_dead');
+  }
   if (markedLotus && move.tileId !== markedLotus.id) throw new RuleError('Ваш Лотос позначений. Пересуньте його зараз, інакше ви програєте.');
   const tile = next.board.find((candidate) => candidate.id === move.tileId);
   if (!tile || tile.owner !== player) throw new RuleError('Ця фішка вам не належить');
@@ -134,14 +142,19 @@ function applyMove(state, player, move) {
   // An Avatar restored beside a Lotus is dangerous too.
   for (const lotus of next.board.filter((piece) => piece.type === 'lotus' && piece.position && piece.lotusState !== 'dead')) if (enemyAdjacent(next, lotus, 'avatar').length) lotus.lotusState = 'marked';
 
-  next.lastMove = { tileId: tile.id, type: tile.type, from, to: move.to, route, player };
+  next.lastMove = { moveId: move.commandId || `turn-${next.turn}`, tileId: tile.id, type: tile.type, from, to: move.to, route, player, destructionEvents: next._destructionEvents || [] };
+  delete next._destructionEvents;
   next.moves.push({ turn: next.turn, player, move, at: new Date().toISOString(), notation: `${tile.type} ${from} → ${move.to}` });
   next.turn += 1; next.activePlayer = other(next, player); next.version += 1; next.updatedAt = new Date().toISOString();
   const deadLotus = next.board.find((piece) => piece.type === 'lotus' && piece.lotusState === 'dead');
   if (deadLotus) return finish(next, other(next, deadLotus.owner), 'lotus_dead');
   const winner = portalWinner(next); if (winner) return finish(next, winner, 'lotus_reached_center');
   const nextMarked = next.board.find((piece) => piece.owner === next.activePlayer && piece.type === 'lotus' && piece.lotusState === 'marked');
-  if (nextMarked && !legalTargets(next, nextMarked.id).length) { capture(next, nextMarked, player); return finish(next, player, 'lotus_dead'); }
+  if (nextMarked && !legalTargets(next, nextMarked.id).length) {
+    capture(next, nextMarked, player); next.lastMove.destructionEvents.push(...next._destructionEvents);
+    delete next._destructionEvents; return finish(next, player, 'lotus_dead');
+  }
+  delete next._destructionEvents;
   next.legalMoves = legalMovesForActivePlayer(next); return next;
 }
 
