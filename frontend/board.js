@@ -95,7 +95,7 @@ window.Board = {
   },
   targetKind(game, selected, position) {
     if (!selected) return 'move';
-    if (selected.type === 'lotus') return game.board.some((p) => p.owner !== selected.owner && p.type === 'avatar' && p.position && this.adjacent(p.position, position)) ? 'danger' : 'safe';
+    if (selected.type === 'lotus') return game.board.some((p) => p.owner !== selected.owner && p.position && this.adjacent(p.position, position)) ? 'danger' : 'safe';
     return game.board.some((p) => p.owner !== selected.owner && p.position && this.adjacent(p.position, position)) ? 'attack' : 'move';
   },
   adjacent(a, b) {

@@ -32,15 +32,17 @@ test('host view rotates points and hit polygons while preserving canonical cell 
   assert.equal(cell.id, '-7,-1');
 });
 
-test('frontend attack and Lotus-danger hints use all eight neighbours in either perspective', () => {
+test('frontend attack and Lotus-danger hints use every enemy type in all eight neighbours', () => {
   for (const side of ['host', 'guest']) {
     const Board = loadBoard(side);
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
-      const enemy = { owner: 'other', type: 'avatar', position: `${dx},${dy}` };
-      const game = { board: [enemy] };
-      assert.equal(Board.adjacent('0,0', enemy.position), true, `${side}: ${dx},${dy}`);
-      assert.equal(Board.targetKind(game, { owner: 'me', type: 'water' }, '0,0'), 'attack');
-      assert.equal(Board.targetKind(game, { owner: 'me', type: 'lotus' }, '0,0'), 'danger');
+      for (const type of ['water', 'earth', 'fire', 'air', 'avatar', 'lotus']) {
+        const enemy = { owner: 'other', type, position: `${dx},${dy}` };
+        const game = { board: [enemy] };
+        assert.equal(Board.adjacent('0,0', enemy.position), true, `${side}: ${type}: ${dx},${dy}`);
+        assert.equal(Board.targetKind(game, { owner: 'me', type: 'water' }, '0,0'), 'attack');
+        assert.equal(Board.targetKind(game, { owner: 'me', type: 'lotus' }, '0,0'), 'danger');
+      }
     }
     assert.equal(Board.adjacent('0,0', '2,0'), false);
   }
