@@ -1,40 +1,45 @@
 # Board geometry
 
-The authoritative board and the SVG use one `0 0 1000 1000` coordinate space.
-The centre is `(500, 500)`, cells are 68 units wide and 50 units tall, and a
-piece has a 40-unit diameter. A cell ID is always `column,row`; it is not a
-browser-pixel position.
+The authoritative engine and SVG share a `0 0 1000 1000` coordinate space,
+centred at `(500, 500)`. A cell ID is always the canonical `column,row` pair;
+it never contains browser pixels or a player's viewing perspective.
 
-For a logical `(row, column)` pair the shared mapping is:
+With `GRID_STEP = 64` and `h = GRID_STEP / 2`, both applications use:
 
 ```text
-centerX = 500 + column * 68 + (abs(row) % 2 ? 34 : 0)
-centerY = 500 + row * 50 + (row < 0 ? -15 : row > 0 ? 15 : 0)
+centerX = 500 + (column - row) * h
+centerY = 500 + (column + row) * h
 ```
 
-The four polygon vertices are `(centerX, centerY - 25)`,
-`(centerX + 34, centerY)`, `(centerX, centerY + 25)`, and
-`(centerX - 34, centerY)`. Thus the complete mapping is
-`cellId -> row/column -> centerX/centerY -> polygonPoints`.
+The cell is the diamond with vertices `(centerX, centerY - h)`,
+`(centerX + h, centerY)`, `(centerX, centerY + h)`, and
+`(centerX - h, centerY)`. A cell is playable when all four vertices are within
+the board circle of radius 455. Cell creation is idempotent.
+
+## Rotation and player perspective
+
+A canonical 180-degree cell rotation is `(-column,-row)`. The server always
+stores canonical coordinates. The guest sees canonical points; the host sees
+each point through `(viewX,viewY) = (1000-x,1000-y)`, putting each player's own
+formation at the bottom without rotating tile artwork or changing click IDs.
 
 ## Initial host formation
 
-| Piece | cellId | row | column | centre |
-|---|---:|---:|---:|---:|
-| Lotus | `0,-8` | -8 | 0 | 500, 85 |
-| Air | `-1,-7` | -7 | -1 | 466, 135 |
-| Earth | `0,-7` | -7 | 0 | 534, 135 |
-| Water | `-1,-6` | -6 | -1 | 432, 185 |
-| Fire | `1,-6` | -6 | 1 | 568, 185 |
-| Earth | `-1,-5` | -5 | -1 | 466, 235 |
-| Air | `0,-5` | -5 | 0 | 534, 235 |
-| Water | `-2,-4` | -4 | -2 | 364, 285 |
-| Fire | `-1,-4` | -4 | -1 | 432, 285 |
-| Avatar | `0,-4` | -4 | 0 | 500, 285 |
-| Water | `1,-4` | -4 | 1 | 568, 285 |
-| Fire | `2,-4` | -4 | 2 | 636, 285 |
-| Air | `-1,-3` | -3 | -1 | 466, 335 |
-| Earth | `0,-3` | -3 | 0 | 534, 335 |
+| Piece | cellId | centre |
+|---|---:|---:|
+| Lotus | `-6,-6` | 500,116 |
+| Air | `-6,-5` | 468,148 |
+| Earth | `-5,-6` | 532,148 |
+| Water | `-6,-4` | 436,180 |
+| Fire | `-4,-6` | 564,180 |
+| Earth | `-6,-3` | 404,212 |
+| Air | `-3,-6` | 596,212 |
+| Water | `-7,-1` | 308,244 |
+| Fire | `-6,-2` | 372,244 |
+| Avatar | `-4,-4` | 500,244 |
+| Water | `-2,-6` | 628,244 |
+| Fire | `-1,-7` | 692,244 |
+| Air | `-5,-2` | 404,276 |
+| Earth | `-2,-5` | 596,276 |
 
-The guest formation uses the actual lattice cell reached by rotating every
-centre 180 degrees around `(500, 500)`. No visual offset is applied to pieces.
+The guest formation is the exact canonical 180-degree rotation of these cells.

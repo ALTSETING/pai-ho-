@@ -5,12 +5,12 @@ const { TILE_TYPES, ELEMENTS, TILE_COUNTS, getCombatResult } = require('./tiles'
 
 class RuleError extends Error {}
 const TOP_FORMATION = Object.freeze([
-  ['lotus', '0,-8'],
-  ['air', '-1,-7'], ['earth', '0,-7'],
-  ['water', '-1,-6'], ['fire', '1,-6'],
-  ['earth', '-1,-5'], ['air', '0,-5'],
-  ['water', '-2,-4'], ['fire', '-1,-4'], ['avatar', '0,-4'], ['water', '1,-4'], ['fire', '2,-4'],
-  ['air', '-1,-3'], ['earth', '0,-3'],
+  ['lotus', '-6,-6'],
+  ['air', '-6,-5'], ['earth', '-5,-6'],
+  ['water', '-6,-4'], ['fire', '-4,-6'],
+  ['earth', '-6,-3'], ['air', '-3,-6'],
+  ['water', '-7,-1'], ['fire', '-6,-2'], ['avatar', '-4,-4'], ['water', '-2,-6'], ['fire', '-1,-7'],
+  ['air', '-5,-2'], ['earth', '-2,-5'],
 ]);
 const INITIAL_POSITIONS = Object.freeze({
   host: TOP_FORMATION.map(([type, position]) => Object.freeze({ type, position })),
@@ -51,6 +51,23 @@ function jumpTargets(state, tile) {
     }
   }
   visit(from); return [...found];
+}
+
+function jumpRoute(state, tile, target) {
+  const visited = new Set([tile.position]);
+  const search = (cell, route) => {
+    if (cell.id === target) return route;
+    for (const [dx, dy] of DIRECTIONS) {
+      const middleId = `${cell.x + dx},${cell.y + dy}`; const landingId = `${cell.x + 2 * dx},${cell.y + 2 * dy}`;
+      const middle = tileAt(state, middleId); const landing = cellMap.get(landingId);
+      if (!landing || tileAt(state, landingId) || !middle || middle.owner !== tile.owner || visited.has(landingId)) continue;
+      visited.add(landingId);
+      const found = search(landing, [...route, landingId]);
+      if (found) return found;
+    }
+    return null;
+  };
+  return search(cellMap.get(tile.position), [tile.position]);
 }
 
 function legalTargets(state, tileId) {
@@ -99,7 +116,7 @@ function applyMove(state, player, move) {
   const tile = next.board.find((candidate) => candidate.id === move.tileId);
   if (!tile || tile.owner !== player) throw new RuleError('Ця фішка вам не належить');
   if (!move.to || !legalTargets(next, tile.id).includes(move.to)) throw new RuleError('Недозволений хід');
-  const from = tile.position; tile.position = move.to; tile.cellId = move.to;
+  const from = tile.position; const route = jumpRoute(next, tile, move.to) || [from, move.to]; tile.position = move.to; tile.cellId = move.to;
   ({ row: tile.row, column: tile.column } = cellMap.get(move.to));
 
   if (tile.type === 'avatar') {
@@ -124,7 +141,7 @@ function applyMove(state, player, move) {
   // An Avatar restored beside a Lotus is dangerous too.
   for (const lotus of next.board.filter((piece) => piece.type === 'lotus' && piece.position && piece.lotusState !== 'dead')) if (enemyAdjacent(next, lotus, 'avatar').length) lotus.lotusState = 'marked';
 
-  next.lastMove = { tileId: tile.id, type: tile.type, from, to: move.to, player };
+  next.lastMove = { tileId: tile.id, type: tile.type, from, to: move.to, route, player };
   next.moves.push({ turn: next.turn, player, move, at: new Date().toISOString(), notation: `${tile.type} ${from} → ${move.to}` });
   next.turn += 1; next.activePlayer = other(next, player); next.version += 1; next.updatedAt = new Date().toISOString();
   const deadLotus = next.board.find((piece) => piece.type === 'lotus' && piece.lotusState === 'dead');

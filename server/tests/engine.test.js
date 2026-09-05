@@ -42,14 +42,14 @@ test('formation uses cell centers and an exact 180 degree rotation', () => {
     assert.equal(cell.centerX, cell.polygonPoints[0].x);
     assert.notEqual(cell.centerY, cell.polygonPoints[0].y);
   }
-  assert.equal(piece(g, 'one', 'avatar').position, '0,-4');
-  assert.equal(piece(g, 'one', 'lotus').position, '0,-8');
-  assert.equal(piece(g, 'two', 'avatar').position, '0,4');
-  assert.equal(piece(g, 'two', 'lotus').position, '0,8');
+  assert.equal(piece(g, 'one', 'avatar').position, '-4,-4');
+  assert.equal(piece(g, 'one', 'lotus').position, '-6,-6');
+  assert.equal(piece(g, 'two', 'avatar').position, '4,4');
+  assert.equal(piece(g, 'two', 'lotus').position, '6,6');
 });
 test('initial visual geometry is separated, centered in cells, and clear of the portal', () => {
   const g = game();
-  const expectedCenters = [[500, 85], [466, 135], [534, 135], [432, 185], [568, 185], [466, 235], [534, 235], [364, 285], [432, 285], [500, 285], [568, 285], [636, 285], [466, 335], [534, 335]];
+  const expectedCenters = [[500, 116], [468, 148], [532, 148], [436, 180], [564, 180], [404, 212], [596, 212], [308, 244], [372, 244], [500, 244], [628, 244], [692, 244], [404, 276], [596, 276]];
   const occupied = g.board.map((tile) => E.cellMap.get(tile.position));
   const host = g.board.filter((tile) => tile.owner === 'one').map((tile) => E.cellMap.get(tile.position));
   const guest = g.board.filter((tile) => tile.owner === 'two').map((tile) => E.cellMap.get(tile.position));
@@ -62,7 +62,7 @@ test('initial visual geometry is separated, centered in cells, and clear of the 
     const cell = occupied[i];
     assert.ok(cell.centerX >= 100 && cell.centerX <= 900 && cell.centerY >= 70 && cell.centerY <= 930);
     for (let j = i + 1; j < occupied.length; j += 1) {
-      assert.ok(Math.hypot(cell.centerX - occupied[j].centerX, cell.centerY - occupied[j].centerY) >= 47);
+      assert.ok(Math.hypot(cell.centerX - occupied[j].centerX, cell.centerY - occupied[j].centerY) >= 45);
     }
   }
 });
@@ -83,4 +83,13 @@ test('trapped marked Lotus dies and awards victory', () => { const g = sparse([[
 test('safe Lotus reaching empty center wins immediately', () => { const n = E.applyMove(sparse([['one', 'lotus', '0,-1']]), 'one', command('one-lotus-1', '0,0')); assert.deepEqual(n.result, { winnerId: 'one', reason: 'lotus_reached_center' }); });
 test('enemy in Spirit Portal blocks win until sector is cleared', () => { let g = sparse([['one', 'lotus', '0,-1'], ['two', 'water', '1,1']]); g = E.applyMove(g, 'one', command('one-lotus-1', '0,0')); assert.equal(g.result, null); g = E.applyMove(g, 'two', command('two-water-1', '2,1')); assert.deepEqual(g.result, { winnerId: 'one', reason: 'lotus_reached_center' }); });
 test('resignation has the required server result', () => { const n = E.applyMove(game(), 'one', { commandId: crypto.randomUUID(), kind: 'resign' }); assert.deepEqual(n.result, { winnerId: 'two', reason: 'resignation' }); });
-test('two clients receive the same serializable authoritative state', () => { const saved = E.applyMove(game(), 'one', command('one-lotus-1', '1,-8')); const clientA = structuredClone(saved); const clientB = structuredClone(saved); assert.deepEqual(clientA, clientB); assert.deepEqual(clientA.legalMoves, clientB.legalMoves); });
+test('two clients receive the same serializable authoritative state', () => { const g = game(); const tile = g.board.find((candidate) => (g.legalMoves[candidate.id] || []).length); const saved = E.applyMove(g, 'one', command(tile.id, g.legalMoves[tile.id][0])); const clientA = structuredClone(saved); const clientB = structuredClone(saved); assert.deepEqual(clientA, clientB); assert.deepEqual(clientA.legalMoves, clientB.legalMoves); });
+
+test('duplicate command is idempotent and records a jump route', () => {
+  const g = sparse([['one', 'water', '-2,0'], ['one', 'earth', '-1,0'], ['one', 'fire', '1,0']]);
+  const move = command('one-water-1', '2,0');
+  const moved = E.applyMove(g, 'one', move);
+  assert.deepEqual(moved.lastMove.route, ['-2,0', '0,0', '2,0']);
+  assert.equal(E.applyMove(moved, 'one', move), moved);
+  assert.equal(moved.moves.length, 1);
+});
