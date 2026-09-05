@@ -3,23 +3,22 @@
 window.Board = {
   cells: [], DEBUG_BOARD: false,
   BOARD_CENTER: { x: 500, y: 500 },
-  PLAYABLE_BOUNDS: { minX: 100, maxX: 900, minY: 70, maxY: 930 },
-  GRID_STEP: 64, GRID_EXTENSION: 700,
+  PLAYABLE_RADIUS: 455, GRID_STEP: 64, GRID_EXTENSION: 700, RADIUS: 9,
   init() {
-    for (let row = -8; row <= 8; row += 1) for (let column = -6; column <= 6; column += 1) {
-      // Keep the authoritative logical cell set unchanged; only its SVG
-      // row/column-to-centre projection is replaced by the diagonal lattice.
-      const legacyCenterX = 500 + column * 68 + (Math.abs(row) % 2 ? 34 : 0);
+    if (this.cells.length) return;
+    for (let row = -this.RADIUS; row <= this.RADIUS; row += 1) for (let column = -this.RADIUS; column <= this.RADIUS; column += 1) {
       const centerX = this.BOARD_CENTER.x + (column - row) * this.GRID_STEP / 2;
       const centerY = this.BOARD_CENTER.y + (column + row) * this.GRID_STEP / 2;
       const halfWidth = this.GRID_STEP / 2; const halfHeight = this.GRID_STEP / 2;
-      if (legacyCenterX - 34 < this.PLAYABLE_BOUNDS.minX || legacyCenterX + 34 > this.PLAYABLE_BOUNDS.maxX) continue;
-      this.cells.push({ id: `${column},${row}`, row, column, centerX, centerY, polygonPoints: [[centerX, centerY - halfHeight], [centerX + halfWidth, centerY], [centerX, centerY + halfHeight], [centerX - halfWidth, centerY]], portal: Math.abs(column) <= 1 && Math.abs(row) <= 1 });
+      const polygonPoints = [[centerX, centerY - halfHeight], [centerX + halfWidth, centerY], [centerX, centerY + halfHeight], [centerX - halfWidth, centerY]];
+      if (polygonPoints.some(([x, y]) => Math.hypot(x - this.BOARD_CENTER.x, y - this.BOARD_CENTER.y) > this.PLAYABLE_RADIUS)) continue;
+      this.cells.push({ id: `${column},${row}`, row, column, centerX, centerY, polygonPoints, portal: Math.abs(column) <= 1 && Math.abs(row) <= 1 });
     }
   },
   cell(id) { return this.cells.find((cell) => cell.id === id); },
-  point(cell) { return { x: cell.centerX, y: cell.centerY }; },
-  polygon(cell) { return cell.polygonPoints.map((point) => point.join(',')).join(' '); },
+  point(cell, rotated = this.rotated) { return rotated ? { x: 1000 - cell.centerX, y: 1000 - cell.centerY } : { x: cell.centerX, y: cell.centerY }; },
+  polygon(cell, rotated = this.rotated) { return cell.polygonPoints.map(([x, y]) => rotated ? `${1000 - x},${1000 - y}` : `${x},${y}`).join(' '); },
+  perspective(game) { return game?.players?.[Game.me?.id]?.side === 'host'; },
   gridLines() {
     const start = -this.GRID_EXTENSION;
     const end = 1000 + this.GRID_EXTENSION;
@@ -84,12 +83,13 @@ window.Board = {
     const grid = this.gridLines();
     const debug = this.DEBUG_BOARD ? this.cells.map((cell) => `<g class="cell-debug"><circle cx="${cell.centerX}" cy="${cell.centerY}" r="2.5"/><text x="${cell.centerX}" y="${cell.centerY - 8}">${cell.id}</text></g>`).join('') : '';
     const hitAreas = this.cells.map((cell) => `<polygon class="cell-hit-area" data-point="${cell.id}" points="${this.polygon(cell)}"/>`).join('');
-    board.innerHTML = `${this.defs()}<g id="board-background"><circle class="outer-shadow" cx="500" cy="500" r="480"/><circle class="outer-rim" cx="500" cy="500" r="468"/><circle class="inner-rim" cx="500" cy="500" r="458"/><circle class="wood" cx="500" cy="500" r="455"/></g><g id="board-zones" clip-path="url(#boardClip)"><rect class="light-zone" x="45" y="45" width="910" height="910"/><path class="wood-start" d="M120 70H880L805 205H195ZM120 930H880L805 795H195Z"/><path class="red-zone" d="M185 205H815L635 405H365ZM365 595H635L815 795H185Z"/><path class="red-hourglass" d="M365 405H635L550 500 635 595H365L450 500Z"/><circle class="portal" cx="500" cy="500" r="68"/><circle class="portal-core" cx="500" cy="500" r="23"/></g><g id="board-grid" clip-path="url(#boardClip)">${grid}</g><g id="cell-centres-debug" clip-path="url(#boardClip)">${debug}</g><g id="move-highlights" clip-path="url(#boardClip)"></g><g id="pieces"></g><g id="effects"></g><g id="cell-hit-areas" clip-path="url(#boardClip)">${hitAreas}</g>`;
+    board.innerHTML = `${this.defs()}<g id="board-background"><circle class="outer-shadow" cx="500" cy="500" r="480"/><circle class="outer-rim" cx="500" cy="500" r="468"/><circle class="inner-rim" cx="500" cy="500" r="458"/><circle class="wood" cx="500" cy="500" r="455"/></g><g id="board-zones" clip-path="url(#boardClip)"><rect class="light-zone" x="45" y="45" width="910" height="910"/><path class="wood-start" d="M120 70H880L805 205H195ZM120 930H880L805 795H195Z"/><path class="red-zone" d="M185 205H815L635 405H365ZM365 595H635L815 795H185Z"/><path class="red-hourglass" d="M365 405H635L550 500 635 595H365L450 500Z"/><circle class="portal" cx="500" cy="500" r="68"/><circle class="portal-core" cx="500" cy="500" r="23"/></g><g id="board-grid" clip-path="url(#boardClip)">${grid}</g><g id="cell-centres-debug" clip-path="url(#boardClip)">${debug}</g><g id="cell-hit-areas" clip-path="url(#boardClip)">${hitAreas}</g><g id="move-highlights" clip-path="url(#boardClip)"></g><g id="pieces"></g><g id="effects"></g>`;
     board.querySelectorAll('.cell-hit-area').forEach((node) => { node.onclick = (event) => { event.stopPropagation(); const targets = Board.currentTargets || []; if (targets.includes(node.dataset.point)) Game.send(node.dataset.point); else Game.boardCell(node.dataset.point); }; });
     return board;
   },
   draw(game, targets = [], selected = null, animate = true) {
-    const board = this.createStructure(); this.currentTargets = targets;
+    const board = this.createStructure(); this.currentTargets = targets; this.rotated = this.perspective(game);
+    board.querySelectorAll('.cell-hit-area').forEach((node) => node.setAttribute('points', this.polygon(this.cell(node.dataset.point))));
     const highlights = targets.map((id) => { const cell = this.cell(id); return `<polygon class="move-target ${this.targetKind(game, selected, id)}" data-point="${id}" points="${this.polygon(cell)}"/>`; }).join('');
     board.querySelector('#move-highlights').innerHTML = highlights;
     board.querySelectorAll('.cell-hit-area').forEach((node) => node.classList.toggle('target', targets.includes(node.dataset.point)));
@@ -101,7 +101,15 @@ window.Board = {
       let node = [...layer.children].find((candidate) => candidate.dataset.pieceId === tile.id); const isNew = !node;
       if (isNew) { node = document.createElementNS('http://www.w3.org/2000/svg', 'g'); node.classList.add('piece'); node.dataset.pieceId = tile.id; node.innerHTML = this.tile(tile, selected?.id === tile.id); layer.append(node); }
       const inner = node.querySelector('.svg-tile'); inner.classList.toggle('selected', selected?.id === tile.id); inner.classList.toggle('marked', tile.lotusState === 'marked');
-      node.style.transitionDuration = animate && !isNew ? '440ms' : '0ms'; node.setAttribute('transform', `translate(${cell.centerX} ${cell.centerY})`); node.style.transform = `translate(${cell.centerX}px, ${cell.centerY}px)`;
+      const point = this.point(cell); const previousPoint = node.dataset.x ? { x: Number(node.dataset.x), y: Number(node.dataset.y) } : null;
+      node.style.transitionDuration = animate && !isNew ? '400ms' : '0ms';
+      const route = animate && game.lastMove?.tileId === tile.id && game.version !== Number(node.dataset.animatedVersion) ? game.lastMove.route : null;
+      if (route?.length > 2 && node.animate) {
+        node.style.transitionDuration = '0ms';
+        node.animate(route.map((id) => { const p = this.point(this.cell(id)); return { transform: `translate(${p.x}px, ${p.y}px)` }; }), { duration: 400, easing: 'cubic-bezier(.22,1,.36,1)' });
+        node.dataset.animatedVersion = game.version;
+      } else if (previousPoint && previousPoint.x === point.x && previousPoint.y === point.y) node.style.transitionDuration = '0ms';
+      node.style.transform = `translate(${point.x}px, ${point.y}px)`; node.dataset.x = point.x; node.dataset.y = point.y;
     });
     const renderedPieceIds = [...layer.querySelectorAll('.piece')].map((node) => node.dataset.pieceId);
     console.assert(renderedPieceIds.length === new Set(renderedPieceIds).size, 'Duplicate pieceId in board DOM', renderedPieceIds);
