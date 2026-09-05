@@ -1,6 +1,6 @@
 'use strict';
 const crypto = require('node:crypto');
-const { cells, cellMap, adjacentIds, rotateCell180, DIRECTIONS } = require('./board');
+const { cells, cellMap, adjacentIds, stepIds, rotateCell180, COMBAT_DIRECTIONS } = require('./board');
 const { TILE_TYPES, ELEMENTS, TILE_COUNTS, getCombatResult } = require('./tiles');
 
 class RuleError extends Error {}
@@ -43,7 +43,7 @@ function jumpTargets(state, tile) {
   if (tile.type === 'lotus') return [];
   const from = cellMap.get(tile.position); const found = new Set(); const visited = new Set([tile.position]);
   function visit(cell) {
-    for (const [dx, dy] of DIRECTIONS) {
+    for (const [dx, dy] of COMBAT_DIRECTIONS) {
       const middleId = `${cell.x + dx},${cell.y + dy}`; const landingId = `${cell.x + 2 * dx},${cell.y + 2 * dy}`;
       const middle = tileAt(state, middleId);
       if (!cellMap.has(landingId) || tileAt(state, landingId) || !middle || middle.owner !== tile.owner || visited.has(landingId)) continue;
@@ -57,7 +57,7 @@ function jumpRoute(state, tile, target) {
   const visited = new Set([tile.position]);
   const search = (cell, route) => {
     if (cell.id === target) return route;
-    for (const [dx, dy] of DIRECTIONS) {
+    for (const [dx, dy] of COMBAT_DIRECTIONS) {
       const middleId = `${cell.x + dx},${cell.y + dy}`; const landingId = `${cell.x + 2 * dx},${cell.y + 2 * dy}`;
       const middle = tileAt(state, middleId); const landing = cellMap.get(landingId);
       if (!landing || tileAt(state, landingId) || !middle || middle.owner !== tile.owner || visited.has(landingId)) continue;
@@ -73,7 +73,7 @@ function jumpRoute(state, tile, target) {
 function legalTargets(state, tileId) {
   const tile = state.board.find((candidate) => candidate.id === tileId);
   if (!tile || !tile.position || tile.lotusState === 'dead' || tile.waiting) return [];
-  let targets = [...adjacentIds(tile.position).filter((id) => !tileAt(state, id)), ...jumpTargets(state, tile)];
+  let targets = [...stepIds(tile.position).filter((id) => !tileAt(state, id)), ...jumpTargets(state, tile)];
   if (tile.type === 'lotus' && tile.lotusState === 'marked') targets = targets.filter((id) => !adjacentIds(id).some((near) => { const piece = tileAt(state, near); return piece && piece.owner !== tile.owner && piece.type === 'avatar'; }));
   return [...new Set(targets)];
 }
@@ -152,4 +152,4 @@ function applyMove(state, player, move) {
   next.legalMoves = legalMovesForActivePlayer(next); return next;
 }
 
-module.exports = { RuleError, cells, cellMap, adjacentIds, rotateCell180, TILE_TYPES, TILE_COUNTS, ELEMENTS, TOP_FORMATION, INITIAL_POSITIONS, getCombatResult, legalTargets, createGame, applyMove };
+module.exports = { RuleError, cells, cellMap, adjacentIds, stepIds, rotateCell180, TILE_TYPES, TILE_COUNTS, ELEMENTS, TOP_FORMATION, INITIAL_POSITIONS, getCombatResult, legalTargets, createGame, applyMove };
