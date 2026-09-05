@@ -1,6 +1,6 @@
 'use strict';
 const crypto = require('node:crypto');
-const { cells, cellMap, adjacentIds, stepIds, rotateCell180, COMBAT_DIRECTIONS } = require('./board');
+const { cells, cellMap, adjacentIds, stepIds, rotateCell180, JUMP_DIRECTIONS } = require('./board');
 const { TILE_TYPES, ELEMENTS, TILE_COUNTS, getCombatResult } = require('./tiles');
 
 class RuleError extends Error {}
@@ -39,36 +39,29 @@ function createGame(players, id = crypto.randomUUID()) {
   state.legalMoves = legalMovesForActivePlayer(state); return state;
 }
 
-function jumpTargets(state, tile) {
-  if (tile.type === 'lotus') return [];
-  const from = cellMap.get(tile.position); const found = new Set(); const visited = new Set([tile.position]);
-  function visit(cell) {
-    for (const [dx, dy] of COMBAT_DIRECTIONS) {
-      const middleId = `${cell.x + dx},${cell.y + dy}`; const landingId = `${cell.x + 2 * dx},${cell.y + 2 * dy}`;
-      const middle = tileAt(state, middleId);
-      if (!cellMap.has(landingId) || tileAt(state, landingId) || !middle || middle.owner !== tile.owner || visited.has(landingId)) continue;
-      found.add(landingId); visited.add(landingId); visit(cellMap.get(landingId));
+function jumpRoutes(state, tile) {
+  const routes = new Map();
+  if (tile.type === 'lotus') return routes;
+  // The moving piece is absent while the complete chain is evaluated. In
+  // particular, its origin cannot accidentally be used as a piece to jump over.
+  const jumpTileAt = (position) => state.board.find((piece) => piece.id !== tile.id && piece.position === position);
+  const visit = (cell, route, visited) => {
+    for (const [dx, dy] of JUMP_DIRECTIONS) {
+      const middleId = `${cell.column + dx},${cell.row + dy}`;
+      const landingId = `${cell.column + 2 * dx},${cell.row + 2 * dy}`;
+      const middle = jumpTileAt(middleId); const landing = cellMap.get(landingId);
+      if (!landing || jumpTileAt(landingId) || !middle || middle.owner !== tile.owner || visited.has(landingId)) continue;
+      const nextRoute = [...route, landingId];
+      if (!routes.has(landingId)) routes.set(landingId, nextRoute);
+      visit(landing, nextRoute, new Set([...visited, landingId]));
     }
-  }
-  visit(from); return [...found];
+  };
+  visit(cellMap.get(tile.position), [tile.position], new Set([tile.position]));
+  return routes;
 }
 
-function jumpRoute(state, tile, target) {
-  const visited = new Set([tile.position]);
-  const search = (cell, route) => {
-    if (cell.id === target) return route;
-    for (const [dx, dy] of COMBAT_DIRECTIONS) {
-      const middleId = `${cell.x + dx},${cell.y + dy}`; const landingId = `${cell.x + 2 * dx},${cell.y + 2 * dy}`;
-      const middle = tileAt(state, middleId); const landing = cellMap.get(landingId);
-      if (!landing || tileAt(state, landingId) || !middle || middle.owner !== tile.owner || visited.has(landingId)) continue;
-      visited.add(landingId);
-      const found = search(landing, [...route, landingId]);
-      if (found) return found;
-    }
-    return null;
-  };
-  return search(cellMap.get(tile.position), [tile.position]);
-}
+function jumpTargets(state, tile) { return [...jumpRoutes(state, tile).keys()]; }
+function jumpRoute(state, tile, target) { return jumpRoutes(state, tile).get(target) || null; }
 
 function legalTargets(state, tileId) {
   const tile = state.board.find((candidate) => candidate.id === tileId);

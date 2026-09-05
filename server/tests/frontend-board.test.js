@@ -39,3 +39,10 @@ test('interactive SVG layers put hit areas below pieces and use one CSS transfor
   assert.match(source, /Game\.inspectPiece/);
   assert.match(source, /Game\.send/);
 });
+
+test('chain animation uses every authoritative landing and scales its duration', () => {
+  const source = fs.readFileSync('../frontend/board.js', 'utf8');
+  assert.match(source, /route\.map\(\(id, index\)/);
+  assert.match(source, /duration: 300 \* \(route\.length - 1\)/);
+  assert.match(source, /this\.point\(this\.cell\(id\)\)/);
+});
