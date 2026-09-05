@@ -85,7 +85,7 @@ window.Game = {
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelector('#resign').onclick = () => confirm('Справді здатися?') && PaiSocket.emit('game:resign', { commandId: crypto.randomUUID() });
   document.querySelector('#rematch').onclick = () => PaiSocket.emit('game:rematch', { gameId: Game.state.id });
-  document.querySelector('#rules-open').onclick = () => document.querySelector('#rules').showModal();
+  document.querySelector('#rules-open').onclick = () => Rules.open();
   document.querySelectorAll('.logout').forEach(button => button.onclick = () => Game.logout());
   document.querySelector('#sound-toggle').onclick = (event) => { Game.audioReady=true;Game.sound=!Game.sound;event.currentTarget.textContent=Game.sound?'♪':'♩';event.currentTarget.setAttribute('aria-label',Game.sound?'Вимкнути звук':'Увімкнути звук'); };
   document.addEventListener('pointerdown',()=>{Game.audioReady=true},{once:true});
