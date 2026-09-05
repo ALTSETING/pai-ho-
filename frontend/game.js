@@ -9,8 +9,8 @@ window.Game = {
   async start() { PaiAuth.bind(); Lobby.bind(); this.me = await PaiAuth.restore(); if (this.me) await this.online(); else UI.show('login'); },
   async online() {
     UI.show('lobby'); const socket = await PaiSocket.connect();
-    socket.on('connect', () => { UI.connection(true); socket.emit('lobby:join'); });
-    socket.on('disconnect', () => UI.connection(false));
+    socket.on('connect', () => { this.pending = false; UI.connection(true); socket.emit('lobby:join'); });
+    socket.on('disconnect', () => { this.pending = false; UI.connection(false); if (this.state) this.render(this.state); });
     socket.on('connect_error', (error) => UI.error(error.message));
     socket.on('lobby:state', (state) => Lobby.render(state));
     socket.on('game:started', (state) => this.render(state));
@@ -25,7 +25,7 @@ window.Game = {
     document.querySelector('#lotus-warning').hidden = !marked;
     const mine = state.activePlayer === this.me.id;
     const turn = document.querySelector('#turn'); turn.textContent = state.phase === 'finished' ? 'ПАРТІЮ ЗАВЕРШЕНО' : mine ? 'ВАШ ХІД' : 'ХІД СУПЕРНИКА'; turn.classList.toggle('mine', mine);
-    document.querySelector('#selection-help').textContent = this.pending ? 'Очікуємо підтвердження сервера…' : this.selected ? `${LABELS[this.selected.type]} · оберіть підсвічену клітину` : 'Оберіть свою фішку на дошці';
+    document.querySelector('#selection-help').textContent = this.pending ? 'Очікуємо підтвердження сервера…' : this.selected && !this.targets.length ? `${LABELS[this.selected.type]} не має доступних ходів · натисніть ще раз, щоб скасувати` : this.selected ? `${LABELS[this.selected.type]} · оберіть підсвічену клітину` : 'Оберіть свою фішку на дошці';
     document.querySelector('#moves').innerHTML = state.moves.slice(-10).reverse().map((move) => `<li><b>${move.turn}.</b> ${UI.escape(move.notation)}</li>`).join('') || '<li>Ще немає ходів</li>';
     const captured = Object.entries(state.captured).flatMap(([owner, types]) => types.map((type) => `${owner === this.me.id ? 'Ви' : 'Суперник'}: ${LABELS[type]}`));
     document.querySelector('#captured').innerHTML = captured.map((text) => `<li>${UI.escape(text)}</li>`).join('') || '<li>Немає</li>';
