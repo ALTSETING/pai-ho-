@@ -67,7 +67,7 @@ function legalTargets(state, tileId) {
   const tile = state.board.find((candidate) => candidate.id === tileId);
   if (!tile || !tile.position || tile.lotusState === 'dead' || tile.waiting) return [];
   let targets = [...stepIds(tile.position).filter((id) => !tileAt(state, id)), ...jumpTargets(state, tile)];
-  if (tile.type === 'lotus' && tile.lotusState === 'marked') targets = targets.filter((id) => !adjacentIds(id).some((near) => { const piece = tileAt(state, near); return piece && piece.owner !== tile.owner && piece.type === 'avatar'; }));
+  if (tile.type === 'lotus' && tile.lotusState === 'marked') targets = targets.filter((id) => !adjacentIds(id).some((near) => { const piece = tileAt(state, near); return piece && piece.owner !== tile.owner; }));
   return [...new Set(targets)];
 }
 function legalMovesForActivePlayer(state) {
@@ -87,6 +87,13 @@ function restoreWaitingAvatars(next) {
   for (const avatar of next.board.filter((tile) => tile.type === 'avatar' && tile.waiting)) if (!tileAt(next, avatar.startPosition)) {
     const cell = cellMap.get(avatar.startPosition);
     avatar.position = avatar.startPosition; avatar.cellId = avatar.startPosition; avatar.row = cell.row; avatar.column = cell.column; avatar.waiting = false;
+  }
+}
+function markThreatenedLotuses(next, movedTile) {
+  for (const lotus of next.board.filter((piece) => piece.type === 'lotus' && piece.position && piece.lotusState !== 'dead')) {
+    const threatened = enemyAdjacent(next, lotus).length > 0;
+    if (threatened) lotus.lotusState = 'marked';
+    else if (lotus.id === movedTile?.id) lotus.lotusState = 'safe';
   }
 }
 function portalWinner(next) {
@@ -122,8 +129,7 @@ function applyMove(state, player, move) {
 
   if (tile.type === 'avatar') {
     for (const enemy of enemyAdjacent(next, tile)) {
-      if (ELEMENTS.includes(enemy.type)) capture(next, enemy, player);
-      else if (enemy.type === 'lotus' && enemy.lotusState !== 'dead') enemy.lotusState = 'marked';
+      if (ELEMENTS.includes(enemy.type) || enemy.type === 'avatar') capture(next, enemy, player);
     }
   } else if (ELEMENTS.includes(tile.type)) {
     for (const enemy of enemyAdjacent(next, tile)) {
@@ -135,12 +141,11 @@ function applyMove(state, player, move) {
         if (result === 'lose') capture(next, tile, enemy.owner);
       }
     }
-  } else if (tile.type === 'lotus') {
-    tile.lotusState = enemyAdjacent(next, tile, 'avatar').length ? 'marked' : 'safe';
   }
   restoreWaitingAvatars(next);
-  // An Avatar restored beside a Lotus is dangerous too.
-  for (const lotus of next.board.filter((piece) => piece.type === 'lotus' && piece.position && piece.lotusState !== 'dead')) if (enemyAdjacent(next, lotus, 'avatar').length) lotus.lotusState = 'marked';
+  // Threats are evaluated only after combat and Avatar restoration, so pieces
+  // removed by combat cannot mark a Lotus and restored pieces can mark one.
+  markThreatenedLotuses(next, tile);
 
   next.lastMove = { moveId: move.commandId || `turn-${next.turn}`, tileId: tile.id, type: tile.type, from, to: move.to, route, player, destructionEvents: next._destructionEvents || [] };
   delete next._destructionEvents;
