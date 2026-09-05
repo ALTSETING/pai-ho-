@@ -67,6 +67,29 @@ test('initial visual geometry is separated, centered in cells, and clear of the 
   }
 });
 test('ordinary adjacent movement works and alternates turn', () => { const g = sparse([['one', 'water', '0,-2']]); const n = E.applyMove(g, 'one', command('one-water-1', '1,-2')); assert.equal(piece(n, 'one', 'water').position, '1,-2'); assert.equal(n.activePlayer, 'two'); });
+test('every piece type can step to all eight free neighbours in the board center', () => {
+  const expected = ['1,0', '-1,0', '0,1', '0,-1', '1,1', '1,-1', '-1,1', '-1,-1'];
+  for (const type of [...E.ELEMENTS, 'avatar', 'lotus']) {
+    const g = sparse([['one', type, '0,0']]);
+    assert.deepEqual(new Set(E.legalTargets(g, `one-${type}-1`)), new Set(expected), type);
+  }
+});
+test('ordinary steps exclude occupied and off-board cells', () => {
+  const center = sparse([['one', 'water', '0,0'], ['one', 'earth', '1,1'], ['two', 'fire', '-1,-1']]);
+  assert.deepEqual(new Set(E.legalTargets(center, 'one-water-1')), new Set(['1,0', '-1,0', '0,1', '0,-1', '1,-1', '-1,1']));
+  const edge = sparse([['one', 'water', '0,-9']]);
+  assert.deepEqual(new Set(E.legalTargets(edge, 'one-water-1')), new Set(E.stepIds('0,-9')));
+  assert.ok(E.stepIds('0,-9').length < 8);
+});
+test('both players receive and can use all eight step directions in canonical coordinates', () => {
+  for (const owner of ['one', 'two']) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+    const g = sparse([[owner, 'water', '0,0']], owner);
+    const target = `${dx},${dy}`;
+    assert.ok(g.board.find((tile) => tile.id === `${owner}-water-1`));
+    assert.ok(E.legalTargets(g, `${owner}-water-1`).includes(target));
+    assert.equal(piece(E.applyMove(g, owner, command(`${owner}-water-1`, target)), owner, 'water').position, target);
+  }
+});
 test('illegal distant, occupied, off-board and foreign movement is rejected', () => { const g = sparse([['one', 'water', '0,0'], ['one', 'earth', '1,0'], ['two', 'fire', '2,0']]); for (const move of [command('one-water-1', '0,2'), command('one-water-1', '1,0'), command('one-water-1', '5,0'), command('two-fire-1', '2,1')]) assert.throws(() => E.applyMove(g, 'one', move), E.RuleError); });
 test('out-of-turn movement is rejected', () => assert.throws(() => E.applyMove(game(), 'two', command('two-water-1', '1,3')), E.RuleError));
 test('friendly jumps and chains work, enemy jumps and Lotus jumps do not', () => { const g = sparse([['one', 'water', '-2,0'], ['one', 'earth', '-1,0'], ['one', 'fire', '1,0'], ['one', 'lotus', '0,2'], ['two', 'air', '0,1']]); assert.ok(E.legalTargets(g, 'one-water-1').includes('2,0')); assert.ok(!E.legalTargets(g, 'one-lotus-1').includes('0,0')); });
@@ -79,7 +102,8 @@ test('ordinary piece attacks Avatar and Avatar returns to its start', () => { co
 test('Avatar waits when its return cell is blocked and returns after it clears', () => { const g = sparse([['one', 'water', '0,0'], ['two', 'avatar', '2,0'], ['two', 'earth', '0,4']]); piece(g, 'two', 'avatar').startPosition = '0,4'; let n = E.applyMove(g, 'one', command('one-water-1', '1,0')); assert.equal(piece(n, 'two', 'avatar').waiting, true); n = E.applyMove(n, 'two', command('two-earth-1', '1,4')); assert.equal(piece(n, 'two', 'avatar').position, '0,4'); assert.equal(piece(n, 'two', 'avatar').waiting, false); });
 test('Lotus beside an enemy Avatar becomes marked and must move', () => { let g = sparse([['one', 'avatar', '0,0'], ['two', 'lotus', '2,0'], ['two', 'water', '2,2']]); g = E.applyMove(g, 'one', command('one-avatar-1', '1,0')); assert.equal(piece(g, 'two', 'lotus').lotusState, 'marked'); assert.throws(() => E.applyMove(g, 'two', command('two-water-1', '1,2')), /Лотос позначений/); });
 test('marked Lotus can escape and becomes safe', () => { let g = sparse([['one', 'avatar', '1,0'], ['two', 'lotus', '2,0']], 'two'); piece(g, 'two', 'lotus').lotusState = 'marked'; g = E.applyMove(g, 'two', command('two-lotus-1', '2,1')); assert.equal(piece(g, 'two', 'lotus').lotusState, 'safe'); });
-test('trapped marked Lotus dies and awards victory', () => { const g = sparse([['one', 'avatar', '1,0'], ['two', 'lotus', '0,0'], ['two', 'water', '-1,0'], ['two', 'earth', '0,1'], ['two', 'fire', '0,-1']], 'two'); piece(g, 'two', 'lotus').lotusState = 'marked'; const n = E.applyMove(g, 'two', command('two-lotus-1', '-1,0')); assert.equal(piece(n, 'two', 'lotus').lotusState, 'dead'); assert.deepEqual(n.result, { winnerId: 'one', reason: 'lotus_dead' }); });
+test('trapped marked Lotus dies and awards victory', () => { const g = sparse([['one', 'avatar', '1,0'], ['one', 'water', '1,1'], ['one', 'earth', '1,-1'], ['one', 'fire', '-1,1'], ['one', 'air', '-1,-1'], ['two', 'lotus', '0,0'], ['two', 'water', '-1,0'], ['two', 'earth', '0,1'], ['two', 'fire', '0,-1']], 'two'); piece(g, 'two', 'lotus').lotusState = 'marked'; const n = E.applyMove(g, 'two', command('two-lotus-1', '-1,0')); assert.equal(piece(n, 'two', 'lotus').lotusState, 'dead'); assert.deepEqual(n.result, { winnerId: 'one', reason: 'lotus_dead' }); });
+test('diagonal movement does not expand combat adjacency', () => { const n = E.applyMove(sparse([['one', 'water', '-1,-1'], ['two', 'earth', '1,1']]), 'one', command('one-water-1', '0,0')); assert.equal(piece(n, 'two', 'earth').position, '1,1'); });
 test('safe Lotus reaching empty center wins immediately', () => { const n = E.applyMove(sparse([['one', 'lotus', '0,-1']]), 'one', command('one-lotus-1', '0,0')); assert.deepEqual(n.result, { winnerId: 'one', reason: 'lotus_reached_center' }); });
 test('enemy in Spirit Portal blocks win until sector is cleared', () => { let g = sparse([['one', 'lotus', '0,-1'], ['two', 'water', '1,1']]); g = E.applyMove(g, 'one', command('one-lotus-1', '0,0')); assert.equal(g.result, null); g = E.applyMove(g, 'two', command('two-water-1', '2,1')); assert.deepEqual(g.result, { winnerId: 'one', reason: 'lotus_reached_center' }); });
 test('resignation has the required server result', () => { const n = E.applyMove(game(), 'one', { commandId: crypto.randomUUID(), kind: 'resign' }); assert.deepEqual(n.result, { winnerId: 'two', reason: 'resignation' }); });
