@@ -30,8 +30,16 @@ window.Game = {
     const captured = Object.entries(state.captured).flatMap(([owner, types]) => types.map((type) => `${owner === this.me.id ? 'Ви' : 'Суперник'}: ${LABELS[type]}`));
     document.querySelector('#captured').innerHTML = captured.map((text) => `<li>${UI.escape(text)}</li>`).join('') || '<li>Немає</li>';
     this.renderElements(); this.renderPlayers(); Board.draw(state, this.targets, this.selected, Boolean(previous) && state.version === previous.version + 1);
+    const destructionFinished = Board.animateDestructions(state, previous);
     if (previous?.version !== state.version) { document.querySelector('#pai-sho-board').classList.add('state-changed'); if (previous && state.lastMove?.player === this.me.id) this.playTone(state.captured[this.me.id].length > previous.captured[this.me.id].length); }
-    if (state.result) { document.querySelector('#result-title').textContent = state.result.winnerId === this.me.id ? 'Ви перемогли' : 'Переміг суперник'; document.querySelector('#result-reason').textContent = REASONS[state.result.reason] || state.result.reason; document.querySelector('#result').hidden = false; }
+    const result = document.querySelector('#result');
+    if (!state.result) result.hidden = true;
+    if (state.result) {
+      document.querySelector('#result-title').textContent = state.result.winnerId === this.me.id ? 'Ви перемогли' : 'Переміг суперник'; document.querySelector('#result-reason').textContent = REASONS[state.result.reason] || state.result.reason;
+      const resultVersion = state.version;
+      const lotusDestroyed = state.lastMove?.destructionEvents?.some((event) => event.type === 'lotus');
+      (lotusDestroyed ? destructionFinished : Promise.resolve()).then(() => { if (this.state?.id === state.id && this.state.version === resultVersion) result.hidden = false; });
+    }
   },
   renderElements() {
     const order = ['earth', 'fire', 'air', 'water'];

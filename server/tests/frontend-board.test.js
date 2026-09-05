@@ -46,3 +46,13 @@ test('chain animation uses every authoritative landing and scales its duration',
   assert.match(source, /duration: 300 \* \(route\.length - 1\)/);
   assert.match(source, /this\.point\(this\.cell\(id\)\)/);
 });
+
+test('destruction effects are keyed, perspective-aware, cleaned up and motion-safe', () => {
+  const board = fs.readFileSync('../frontend/board.js', 'utf8');
+  const css = fs.readFileSync('../frontend/styles.css', 'utf8');
+  assert.match(board, /game\.id.*moveId.*event\.pieceId/);
+  assert.match(board, /this\.point\(this\.cell\(event\.position\)\)/);
+  assert.match(board, /setTimeout\(\(\) => node\.remove\(\)/);
+  assert.match(css, /\.destruction-effect\{pointer-events:none/);
+  assert.match(css, /prefers-reduced-motion:reduce.*reducedDeathFade/);
+});
