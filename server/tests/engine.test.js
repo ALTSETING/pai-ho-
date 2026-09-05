@@ -143,7 +143,15 @@ test('both client perspectives receive the same chained-jump endpoint and route'
   }
 });
 
-for (const [attacker, defender] of [['earth', 'fire'], ['fire', 'air'], ['air', 'water'], ['water', 'earth']]) test(`${attacker} defeats ${defender}`, () => { assert.equal(E.getCombatResult(attacker, defender), 'win'); const g = sparse([['one', attacker, '0,0'], ['two', defender, '2,0']]); const n = E.applyMove(g, 'one', command(`one-${attacker}-1`, '1,0')); assert.equal(piece(n, 'two', defender).position, null); });
+const combatDirections = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+for (const [attacker, defender] of [['earth', 'fire'], ['fire', 'air'], ['air', 'water'], ['water', 'earth']]) test(`${attacker} defeats ${defender} in all eight directions`, () => {
+  assert.equal(E.getCombatResult(attacker, defender), 'win');
+  for (const [dx, dy] of combatDirections) {
+    const g = sparse([['one', attacker, '0,0'], ['two', defender, `${2 * dx},${2 * dy}`]]);
+    const n = E.applyMove(g, 'one', command(`one-${attacker}-1`, `${dx},${dy}`));
+    assert.equal(piece(n, 'two', defender).position, null, `${dx},${dy}`);
+  }
+});
 test('losing attacker is removed', () => { const g = sparse([['one', 'fire', '0,0'], ['two', 'earth', '2,0']]); const n = E.applyMove(g, 'one', command('one-fire-1', '1,0')); assert.equal(piece(n, 'one', 'fire').position, null); });
 test('neutral Earth/Air and Fire/Water pairs remain', () => { for (const [a, b] of [['earth', 'air'], ['fire', 'water']]) { assert.equal(E.getCombatResult(a, b), 'neutral'); const n = E.applyMove(sparse([['one', a, '0,0'], ['two', b, '2,0']]), 'one', command(`one-${a}-1`, '1,0')); assert.ok(piece(n, 'one', a).position); assert.ok(piece(n, 'two', b).position); } });
 test('Avatar attacks and removes an ordinary enemy', () => { const n = E.applyMove(sparse([['one', 'avatar', '0,0'], ['two', 'water', '2,0']]), 'one', command('one-avatar-1', '1,0')); assert.equal(piece(n, 'two', 'water').position, null); });
@@ -164,10 +172,34 @@ test('ordinary piece attacks Avatar and Avatar returns to its start', () => { co
 test('Avatar return is not recorded as destruction', () => { const g = sparse([['one', 'water', '0,0'], ['two', 'avatar', '2,0']]); piece(g, 'two', 'avatar').startPosition = '0,4'; const n = E.applyMove(g, 'one', command('one-water-1', '1,0')); assert.deepEqual(n.lastMove.destructionEvents, []); });
 test('Avatar waits when its return cell is blocked and returns after it clears', () => { const g = sparse([['one', 'water', '0,0'], ['two', 'avatar', '2,0'], ['two', 'earth', '0,4']]); piece(g, 'two', 'avatar').startPosition = '0,4'; let n = E.applyMove(g, 'one', command('one-water-1', '1,0')); assert.equal(piece(n, 'two', 'avatar').waiting, true); n = E.applyMove(n, 'two', command('two-earth-1', '1,4')); assert.equal(piece(n, 'two', 'avatar').position, '0,4'); assert.equal(piece(n, 'two', 'avatar').waiting, false); });
 test('Lotus beside an enemy Avatar becomes marked and must move', () => { let g = sparse([['one', 'avatar', '0,0'], ['two', 'lotus', '2,0'], ['two', 'water', '2,2']]); g = E.applyMove(g, 'one', command('one-avatar-1', '1,0')); assert.equal(piece(g, 'two', 'lotus').lotusState, 'marked'); assert.throws(() => E.applyMove(g, 'two', command('two-water-1', '1,2')), /Лотос позначений/); });
-test('marked Lotus can escape and becomes safe', () => { let g = sparse([['one', 'avatar', '1,0'], ['two', 'lotus', '2,0']], 'two'); piece(g, 'two', 'lotus').lotusState = 'marked'; g = E.applyMove(g, 'two', command('two-lotus-1', '2,1')); assert.equal(piece(g, 'two', 'lotus').lotusState, 'safe'); });
+test('marked Lotus can escape and becomes safe', () => { let g = sparse([['one', 'avatar', '1,0'], ['two', 'lotus', '2,0']], 'two'); piece(g, 'two', 'lotus').lotusState = 'marked'; g = E.applyMove(g, 'two', command('two-lotus-1', '3,1')); assert.equal(piece(g, 'two', 'lotus').lotusState, 'safe'); });
 test('trapped marked Lotus dies and awards victory', () => { const g = sparse([['one', 'avatar', '1,0'], ['one', 'water', '1,1'], ['one', 'earth', '1,-1'], ['one', 'fire', '-1,1'], ['one', 'air', '-1,-1'], ['two', 'lotus', '0,0'], ['two', 'water', '-1,0'], ['two', 'earth', '0,1'], ['two', 'fire', '0,-1']], 'two'); piece(g, 'two', 'lotus').lotusState = 'marked'; const n = E.applyMove(g, 'two', command('two-lotus-1', '-1,0')); assert.equal(piece(n, 'two', 'lotus').lotusState, 'dead'); assert.deepEqual(n.result, { winnerId: 'one', reason: 'lotus_dead' }); });
 test('Lotus death is an authoritative destruction event', () => { const g = sparse([['one', 'avatar', '1,0'], ['one', 'water', '1,1'], ['one', 'earth', '1,-1'], ['one', 'fire', '-1,1'], ['one', 'air', '-1,-1'], ['two', 'lotus', '0,0'], ['two', 'water', '-1,0'], ['two', 'earth', '0,1'], ['two', 'fire', '0,-1']], 'two'); piece(g, 'two', 'lotus').lotusState = 'marked'; const n = E.applyMove(g, 'two', command('two-lotus-1', '-1,0')); assert.deepEqual(n.lastMove.destructionEvents.map(({ pieceId, type, position }) => ({ pieceId, type, position })), [{ pieceId: 'two-lotus-1', type: 'lotus', position: '0,0' }]); });
-test('diagonal movement does not expand combat adjacency', () => { const n = E.applyMove(sparse([['one', 'water', '-1,-1'], ['two', 'earth', '1,1']]), 'one', command('one-water-1', '0,0')); assert.equal(piece(n, 'two', 'earth').position, '1,1'); });
+test('Avatar removes elements and marks a Lotus in all eight directions', () => {
+  for (const [dx, dy] of combatDirections) {
+    let n = E.applyMove(sparse([['one', 'avatar', '0,0'], ['two', 'water', `${2 * dx},${2 * dy}`]]), 'one', command('one-avatar-1', `${dx},${dy}`));
+    assert.equal(piece(n, 'two', 'water').position, null, `element ${dx},${dy}`);
+    n = E.applyMove(sparse([['one', 'avatar', '0,0'], ['two', 'lotus', `${2 * dx},${2 * dy}`]]), 'one', command('one-avatar-1', `${dx},${dy}`));
+    assert.equal(piece(n, 'two', 'lotus').lotusState, 'marked', `lotus ${dx},${dy}`);
+  }
+});
+test('marked Lotus safety checks all eight destination neighbours', () => {
+  for (const [dx, dy] of combatDirections) {
+    const g = sparse([['two', 'lotus', '0,0'], ['one', 'avatar', `${1 + dx},${dy}`]], 'two');
+    piece(g, 'two', 'lotus').lotusState = 'marked';
+    assert.ok(!E.legalTargets(g, 'two-lotus-1').includes('1,0'), `${dx},${dy}`);
+  }
+  const safe = sparse([['two', 'lotus', '0,0'], ['one', 'avatar', '3,0']], 'two');
+  piece(safe, 'two', 'lotus').lotusState = 'marked';
+  assert.ok(E.legalTargets(safe, 'two-lotus-1').includes('1,0'));
+});
+test('combat is resolved at the endpoint after a direction-changing jump chain', () => {
+  const g = sparse([['one', 'water', '0,0'], ['one', 'earth', '1,0'], ['one', 'fire', '2,1'], ['two', 'earth', '3,3']]);
+  const n = E.applyMove(g, 'one', command('one-water-1', '2,2'));
+  assert.deepEqual(n.lastMove.route, ['0,0', '2,0', '2,2']);
+  assert.equal(piece(n, 'two', 'earth').position, null);
+  assert.equal(piece(n, 'one', 'fire').position, '2,1', 'jumped pieces are not captured');
+});
 test('safe Lotus reaching empty center wins immediately', () => { const n = E.applyMove(sparse([['one', 'lotus', '0,-1']]), 'one', command('one-lotus-1', '0,0')); assert.deepEqual(n.result, { winnerId: 'one', reason: 'lotus_reached_center' }); });
 test('enemy in Spirit Portal blocks win until sector is cleared', () => { let g = sparse([['one', 'lotus', '0,-1'], ['two', 'water', '1,1']]); g = E.applyMove(g, 'one', command('one-lotus-1', '0,0')); assert.equal(g.result, null); g = E.applyMove(g, 'two', command('two-water-1', '2,1')); assert.deepEqual(g.result, { winnerId: 'one', reason: 'lotus_reached_center' }); });
 test('resignation has the required server result', () => { const n = E.applyMove(game(), 'one', { commandId: crypto.randomUUID(), kind: 'resign' }); assert.deepEqual(n.result, { winnerId: 'two', reason: 'resignation' }); });
